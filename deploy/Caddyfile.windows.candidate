@@ -1,0 +1,23 @@
+{
+	email admin@wickbornarena.xyz
+	storage file_system C:/caddy/data
+	log {
+		output file C:/caddy/logs/caddy-service.log {
+			roll_size 20MiB
+			roll_keep 5
+		}
+	}
+}
+
+hodagisles.xyz, www.hodagisles.xyz {
+    encode gzip zstd
+    @privateStats path /api/online/stats
+    respond @privateStats 404
+    reverse_proxy 127.0.0.1:8891
+}
+
+
+mihaomeme.garden, www.mihaomeme.garden {
+    encode gzip zstd
+    reverse_proxy 127.0.0.1:8892
+}

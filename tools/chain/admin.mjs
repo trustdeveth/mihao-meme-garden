@@ -6,10 +6,13 @@
 //   node tools/chain/admin.mjs new-wallet --out chain/keys/testnet.key
 //       Creates a new key for TESTING and prints only its address (fund it from the BNB Chain testnet faucet).
 //   node tools/chain/admin.mjs deploy   --key-file F [--treasury 0x..] [--recycle-bps 5000] [--new-owner 0x..]
-//       Deploys GardenRewards only. The token is launched separately (on Flap) and named afterwards. Optionally
-//       proposes a new owner (for example a multisig), which must then accept.
+//       Deploys GardenRewards only. The token is launched separately (on Flap) and named afterwards. With
+//       --owner 0x.. (needs --treasury) that wallet owns the contract from the first moment and the deploying key gets
+//       no control at all. Or --new-owner 0x.. proposes an owner later, which must then accept.
 //   node tools/chain/admin.mjs set-token --token 0x.. --rewards 0x.. [--key-file F --yes]
 //       Shows the token's details. With --key-file and --yes it names that token in the contract. THIS WORKS ONCE.
+//   node tools/chain/admin.mjs rescue   --asset bnb|0x.. --to 0x.. --rewards 0x.. --key-file F
+//       Sends out BNB or another token that reached the contract (for example holder dividends). Never the game token.
 //   node tools/chain/admin.mjs fund     --amount 1000000 --rewards 0x.. --key-file F
 //       Moves tokens (for example the developer's launch buy) from the key's wallet into the reward pool.
 //   node tools/chain/admin.mjs finalize --week 2026-11-09 --rewards 0x.. --token 0x.. [--pool 100000] [--min 1] [--deadline-days 30] [--db ...]
@@ -27,7 +30,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createPublicClient, createWalletClient, http, encodeFunctionData } from 'viem';
+import { createPublicClient, createWalletClient, http, encodeFunctionData, parseAbi } from 'viem';
 import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
 import { NETWORKS, viemChain, leafHash, buildTree, getAddress, isAddress, toBase, toNumber, REWARDS_ABI, TOKEN_ABI, MGRD_DECIMALS } from '../../shared/src/chain/evm.js';
 
@@ -74,13 +77,16 @@ async function create(c, name, params) {
   return getAddress(receipt.contractAddress);
 }
 
-/** Deploy the rewards contract (the deployer is its first owner). The token is named later with setToken. */
-export async function deploy(c, { treasury = null, recycleBps = 5000, newOwner = null } = {}) {
-  const me = c.account.address;
-  const pay = treasury ? getAddress(treasury) : me;
-  const rewards = await create(c, 'GardenRewards', [pay, recycleBps, me]);
+/** Deploy the rewards contract. `owner` controls it from the start (default: the deployer). The token is named
+ * later with setToken. */
+export async function deploy(c, { treasury = null, recycleBps = 5000, owner = null, newOwner = null } = {}) {
+  if (owner && newOwner) throw new Error('use --owner or --new-owner, not both');
+  if (owner && !treasury) throw new Error('with --owner, give --treasury too (it would otherwise be the deploying wallet)');
+  const first = owner ? getAddress(owner) : c.account.address;
+  const pay = treasury ? getAddress(treasury) : first;
+  const rewards = await create(c, 'GardenRewards', [pay, recycleBps, first]);
   if (newOwner) await send(c, { address: rewards, abi: REWARDS_ABI, functionName: 'transferOwnership', args: [getAddress(newOwner)] });
-  return { rewards, treasury: pay, owner: me };
+  return { rewards, treasury: pay, owner: first, deployer: c.account.address };
 }
 
 /** What a token says about itself, to check before naming it for good. */
@@ -88,6 +94,24 @@ export async function describeToken(c, token) {
   if (!(await c.pub.getCode({ address: token }))) throw new Error(`there is no contract at ${token} on ${c.cluster}`);
   const [name, symbol, decimals, supply] = await Promise.all(['name', 'symbol', 'decimals', 'totalSupply'].map((functionName) => c.pub.readContract({ address: token, abi: TOKEN_ABI, functionName })));
   return { name, symbol, decimals, supply };
+}
+
+/** Flap's current tax token (FlapTaxTokenV3) on BSC mainnet. Its public source was read: ordinary transfers are
+ * not taxed. Launched tokens are fixed copies (minimal proxies) of this one contract. */
+export const FLAP_TAX_V3 = '0x024f18294970B5c76c0691b87f138A0317156422';
+
+/** Which contract a token is a fixed copy of, and its tax and dividend settings if it is Flap's reviewed tax token. */
+export async function flapDetails(c, token) {
+  const code = (await c.pub.getCode({ address: token }))?.toLowerCase() ?? '';
+  const copy = /^0x363d3d373d3d3d363d73([0-9a-f]{40})5af43d82803e903d91602b57fd5bf3$/.exec(code);
+  const implementation = copy ? getAddress(`0x${copy[1]}`) : null;
+  if (implementation !== FLAP_TAX_V3) return { reviewed: false, implementation };
+  const abi = parseAbi(['function getPoolStateData() view returns (uint8, uint16, uint16, uint256, uint256, uint256)', 'function dividendContract() view returns (address)', 'function dividendToken() view returns (address)']);
+  const read = (address, functionName) => c.pub.readContract({ address, abi, functionName });
+  const [state, buyBps, sellBps, , taxExpiry] = await read(token, 'getPoolStateData');
+  const dividend = await read(token, 'dividendContract');
+  const dividendToken = dividend === NONE ? null : getAddress(await read(dividend, 'dividendToken'));
+  return { reviewed: true, implementation, state, buyBps, sellBps, taxExpiry, dividend, dividendToken };
 }
 
 /**
@@ -185,7 +209,8 @@ async function main() {
     const c = await signing();
     const file = resolve(ROOT, `chain/deployment-${c.cluster}.json`);
     if (c.cluster !== 'local' && existsSync(file)) throw new Error(`${file} already exists: this network has a deployment. Move that file away only if you really mean to deploy again.`);
-    const r = await deploy(c, { treasury: opt('treasury'), recycleBps: Number(opt('recycle-bps', '5000')), newOwner: opt('new-owner') });
+    const given = (k) => (args.includes(`--${k}`) ? address(opt(k), `--${k}`) : null); // a flag with no address must not be ignored
+    const r = await deploy(c, { treasury: given('treasury'), recycleBps: Number(opt('recycle-bps', '5000')), owner: given('owner'), newOwner: given('new-owner') });
     const record = { network: c.cluster, chainId: c.chain.id, ...r, token: '', deployedAt: new Date().toISOString() };
     if (c.cluster !== 'local') writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
     console.log(record);
@@ -197,7 +222,15 @@ async function main() {
     const t = await describeToken(c, token);
     console.log(`Token ${token}\n  name ${plain(t.name)}\n  symbol ${plain(t.symbol)}\n  decimals ${t.decimals}\n  total supply ${whole(t.supply).toLocaleString('en-US')}`);
     if (t.decimals !== MGRD_DECIMALS) throw new Error(`the contract and the game need ${MGRD_DECIMALS} decimals`);
-    if (!really) return console.log('Nothing sent. Check the address against the launch page, check the token has NO transfer tax, then add --key-file and --yes. This can only be done once.');
+    const f = await flapDetails(c, token);
+    if (f.reviewed) {
+      // until the token moves to the exchange, the expiry field still holds a duration in seconds
+      const expiry = f.state === 0 || f.state === 1 ? `lasts ${Math.round(Number(f.taxExpiry) / 86_400)} days after the token moves to the exchange` : `ends ${new Date(Number(f.taxExpiry) * 1000).toISOString().slice(0, 10)}`;
+      const paid = !f.dividendToken ? 'none' : f.dividendToken === token ? "paid in this token (the contract's share joins the reward pool)" : `paid in ${f.dividendToken} (collect the contract's share with: rescue)`;
+      console.log(`  Flap tax token V3 (reviewed): buy tax ${f.buyBps / 100}%, sell tax ${f.sellBps / 100}%, ${expiry}. Ordinary transfers are not taxed.\n  holder dividends: ${paid}`);
+    } else console.log(`  NOT the reviewed Flap tax token (${f.implementation ? `a copy of ${f.implementation}` : 'not a fixed copy'}). A token that takes a fee on ordinary transfers will not work.`);
+    if (!really) return console.log('Nothing sent. Check the address against the launch page, then add --key-file and --yes. This can only be done once.');
+    if (!f.reviewed && c.cluster === 'bsc' && !flag('unreviewed-token')) throw new Error('refusing to set a token whose code was not reviewed. Check it first; --unreviewed-token overrides this.');
     const r = await send(c, { address: rewards, abi: REWARDS_ABI, functionName: 'setToken', args: [token] });
     const file = resolve(ROOT, `chain/deployment-${c.cluster}.json`);
     if (c.cluster !== 'local' && existsSync(file)) writeFileSync(file, `${JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), token }, null, 2)}\n`);
@@ -211,6 +244,11 @@ async function main() {
     const r = await send(c, { address: token, abi: TOKEN_ABI, functionName: 'transfer', args: [rewards, amount] });
     const pool = await c.pub.readContract({ address: rewards, abi: REWARDS_ABI, functionName: 'poolBalance' });
     console.log(`Moved ${whole(amount).toLocaleString('en-US')} into the pool (${r.transactionHash}). The pool now holds ${whole(pool).toLocaleString('en-US')}.`);
+  } else if (cmd === 'rescue') {
+    const asset = opt('asset')?.toLowerCase() === 'bnb' ? NONE : address(opt('asset'), '--asset (bnb or a token)');
+    const to = address(opt('to'), '--to');
+    const rewards = rewardsAddress(), c = await signing();
+    console.log((await send(c, { address: rewards, abi: REWARDS_ABI, functionName: 'rescueOther', args: [asset, to] })).transactionHash);
   } else if (cmd === 'finalize') await finalize();
   else if (cmd === 'close') {
     const c = await signing();
@@ -244,7 +282,7 @@ async function main() {
     console.log({ network: c.cluster, owner, pendingOwner, token, treasury, recycleBps, paused, pool: whole(pool), reserved: whole(reserved), clubLocked: whole(locked) });
     if (opt('epoch')) console.log(await read('epochs', [BigInt(opt('epoch'))]));
   } else if (cmd) throw new Error(`unknown command ${cmd}`);
-  else console.log('Commands: new-wallet, deploy, set-token, fund, finalize, close, pause, status, poll, burn (see the top of this file)');
+  else console.log('Commands: new-wallet, deploy, set-token, fund, rescue, finalize, close, pause, status, poll, burn (see the top of this file)');
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((e) => { console.error(e.shortMessage ?? e.message ?? e); process.exit(1); });

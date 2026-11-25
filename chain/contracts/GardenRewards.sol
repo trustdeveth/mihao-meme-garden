@@ -20,6 +20,9 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 /// 3. Garden Club. A player locks MGRD for some days and gets exactly the same amount back afterwards.
 /// The token is launched separately (on Flap), so this contract can be deployed first: the owner names the token
 /// with `setToken` ONCE, and it can never be changed. Until then nothing that moves tokens works.
+/// A Flap tax token taxes trades with its liquidity pool, not ordinary transfers, so amounts here arrive in full. It
+/// may also pay holder dividends, and this contract is a holder (club locks included). Dividends paid in the game
+/// token join the pool. Dividends paid in anything else (BNB, WBNB, USDT...) leave with `rescueOther`.
 /// @dev Pool and club tokens share this contract's balance. `totalLocked` marks the club part: nothing the owner or
 /// a reward claim does can spend it. Invariant: balance - totalLocked >= unclaimed amount of all open weeks.
 /// The contract is not upgradeable. There is no minting and no function that can take players' locked tokens.
@@ -32,8 +35,8 @@ contract GardenRewards is Ownable2Step, ReentrancyGuard {
     bytes32 public constant LEAF_DOMAIN = keccak256("MGRD-REWARD-V1");
 
     uint8 public constant TOKEN_DECIMALS = 18; // what the game counts in
-    /// @notice The game token: zero until `setToken`, fixed afterwards. It must be a plain token (no fee on
-    /// transfer, no rebasing).
+    /// @notice The game token: zero until `setToken`, fixed afterwards. Transfers to and from this contract must
+    /// arrive in full (no fee on ordinary transfers, no rebasing).
     IERC20 public token;
     address public treasury;
     uint16 public recycleBps;
@@ -79,6 +82,8 @@ contract GardenRewards is Ownable2Step, ReentrancyGuard {
     event ClubLocked(address indexed owner, uint256 amount, uint64 unlockAt);
     event ClubUnlocked(address indexed owner, uint256 amount);
     event Withdrawn(address indexed to, uint256 amount);
+    /// @dev `asset` is zero for BNB.
+    event OtherRescued(address indexed asset, address indexed to, uint256 amount);
 
     error BadBps();
     error BadToken();
@@ -105,6 +110,8 @@ contract GardenRewards is Ownable2Step, ReentrancyGuard {
     error BadLockDays();
     error StillLocked();
     error CannotRenounce();
+    error GameToken();
+    error SendFailed();
 
     constructor(address treasury_, uint16 recycleBps_, address admin) Ownable(admin) {
         if (recycleBps_ > MAX_BPS) revert BadBps();
@@ -197,6 +204,26 @@ contract GardenRewards is Ownable2Step, ReentrancyGuard {
         emit Withdrawn(to, amount);
         token.safeTransfer(to, amount);
     }
+
+    /// @notice Send out an asset that is NOT the game token, for example holder dividends paid to this contract.
+    /// Pass the zero address for BNB. The game token is refused, so the pool's reservations and club locks cannot
+    /// be reached this way.
+    function rescueOther(address asset, address to) external onlyOwner whenTokenSet nonReentrant {
+        if (asset == address(token)) revert GameToken();
+        if (to == address(0) || to == address(this)) revert BadAddress();
+        uint256 amount = asset == address(0) ? address(this).balance : IERC20(asset).balanceOf(address(this));
+        if (amount == 0) revert ZeroAmount();
+        emit OtherRescued(asset, to, amount);
+        if (asset == address(0)) {
+            (bool sent,) = to.call{value: amount}("");
+            if (!sent) revert SendFailed();
+        } else {
+            IERC20(asset).safeTransfer(to, amount);
+        }
+    }
+
+    /// @notice Accepts BNB, so a dividend unwrapped to BNB can arrive.
+    receive() external payable {}
 
     // ---- players -------------------------------------------------------------------------------------------
 

@@ -32,6 +32,7 @@
     "load": "node tools/load/bots.mjs",
     "chain:build": "node tools/chain/build.mjs",
     "chain:e2e": "node tools/chain/local-e2e.mjs",
+    "chain:rehearse": "node tools/chain/rehearse.mjs",
     "chain:admin": "node tools/chain/admin.mjs",
     "dev:testnet": "node scripts/dev-testnet.mjs"
   }

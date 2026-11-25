@@ -1,14 +1,15 @@
-# MGRD on BNB Chain: contracts, integration and operations
+# MGRD on BNB Chain: contract, integration and operations
 
 Optional token layer for Meme Garden, built to `gametokenomics.md` sections 8 to 13 (written for Solana; the rules
-are the same here). The game runs the same without it. **Nothing is deployed**: not on BNB testnet and not on
-mainnet. It has been tested on a local chain, and both deployments have been simulated on a BNB testnet node.
-There has been **no independent security review**.
+are the same here). The game runs the same without it. **`GardenRewards` is deployed on BSC mainnet** (2026-11-25) at `0x8ca1E92fEff93Da4337baf2a98faf9FbdCa05d05`, with
+**no token connected yet**. Owner and treasury: `0x240ACF16b5401E2EDb543B798aCA6BC3041b948d`. That wallet's private
+key was pasted into a chat, so treat it as exposed: move ownership and the treasury to a safe wallet before adding
+value. The details are in `deployment-bsc.json`. Nothing is on BNB testnet. There has been **no independent security review**.
 
 ## What is on chain
 
 **The token is not part of this repository.** It is launched on Flap. Flap's documentation gives its tokens a
-1,000,000,000 maximum supply and 18 decimals, and also offers tax tokens. **Launch it with no tax.**
+1,000,000,000 maximum supply and 18 decimals. **The team plans to launch a Flap tax token** (see below).
 
 One Solidity contract in `contracts/` (Solidity 0.8.28, OpenZeppelin 5.6.1) is deployed: **`GardenRewards`**. It is
 **not upgradeable**. It is deployed *before* the token exists; the owner names the token with `setToken` **once**, and
@@ -23,6 +24,7 @@ it can never be changed. (`contracts/test/` holds two stand-in tokens used only 
 | `payOrder(orderId, amount, deadline)` | player | Pays a quoted shop order; `recycleBps` (default 50%) stays in the pool, the rest goes to the treasury. Once per wallet and order id; refused after the quote's deadline |
 | `clubLock(amount, days)` / `clubUnlock()` | player | Garden Club: lock for 1 to 365 days, then take back exactly that amount. A lock where less than the full amount arrives (a transfer tax) is refused. Unlocking works while paused |
 | `withdrawUnreserved(to, amount)` | owner | Takes pool tokens no open week needs. Cannot touch reserved rewards or club locks |
+| `rescueOther(asset, to)` | owner | Sends out BNB (zero address) or a token that is **not** the game token, such as holder dividends paid to the contract |
 | `updateConfig(recycleBps, paused)`, `setTreasury` | owner | Pause stops claims, payments and new locks |
 | `transferOwnership` then `acceptOwnership` | owner, then new owner | Two-step handover. `renounceOwnership` is disabled |
 
@@ -32,6 +34,35 @@ is `balance - totalLocked`.
 A reward leaf is `keccak256(keccak256(abi.encode("MGRD-REWARD-V1" hash, chain id, rewards contract, token, week,
 index, wallet, amount)))`, so a proof cannot be reused on another chain, contract, week or wallet. The same hashing
 is in `shared/src/chain/evm.js`; the tests check that the two agree.
+
+## Flap tax token
+
+Based on the public source of Flap's current tax token, `FlapTaxTokenV3` at
+`0x024f18294970B5c76c0691b87f138A0317156422` on BSC mainnet (read from Sourcify; launched tokens are fixed copies of
+it), and of the dividend contract that live tokens pointed to. Other token versions were not reviewed.
+
+- **Tax is charged only on transfers to or from a trading pool.** Claims, shop payments, Garden Club locks and
+  unlocks, tips, funding, withdrawals and burns arrive in full. Before the token moves to the exchange, Flap charges
+  the tax as an extra fee on trades on its price curve.
+- The token has **no function to change the tax rates**. The tax ends after the duration chosen at launch.
+- **Holder dividends (if switched on): the rewards contract is a holder**, so it earns them on the pool and on club
+  locks. Paid in the game token, they join the pool (which the owner can withdraw from when unreserved). Paid in BNB,
+  WBNB, USDT or another token, they sit at the contract until the owner runs
+  `chain:admin -- rescue --asset bnb|0x<token> --to 0x<wallet>`. Anyone can trigger the payout to the contract
+  (`withdrawDividendsFor`), and Flap's bot does so automatically. Players do not get dividends on locked tokens.
+- Flap controls the dividend contract (it can redirect or recover dividends). That does not move the game token held
+  by the rewards contract.
+
+**Rehearse before `set-token`** (needs Foundry; costs nothing, sends nothing to the real chain):
+
+```bash
+npm run chain:rehearse -- --token 0x<token>
+```
+
+It runs on a private copy of BSC mainnet with your token: every game transfer, a simulated move to the exchange, and,
+for dividends paid in BNB, collecting the contract's share. It borrows tokens from Flap's portal; if that holds too
+few, add `--holder 0x<wallet>`. It was run successfully on 2026-11-25 with a live third-party tax token (2% buy and
+sell, BNB dividends). Dividends paid in other tokens were not simulated.
 
 ## What the player's wallet does
 
@@ -55,9 +86,11 @@ npm run chain:e2e      # starts a local chain: deploy, link, claim, shop, tips, 
 
 ```bash
 # 1. deploy the contract (before the token). --treasury receives the treasury half of shop payments;
-#    --new-owner proposes a safer owner (hardware wallet or multisig), which must call acceptOwnership()
-npm run chain:admin -- deploy --network <net> --key-file <file> --treasury 0x<wallet> [--new-owner 0x<wallet>]
-# 2. launch the token on Flap, with NO tax
+#    --owner makes a safe wallet the owner from the first moment (the deploying key then controls nothing; check the
+#    address with care). --new-owner instead proposes an owner later, which must call acceptOwnership()
+npm run chain:admin -- deploy --network <net> --key-file <file> --treasury 0x<wallet> [--owner 0x<wallet>]
+# 2. launch the tax token on Flap, then rehearse with its address
+npm run chain:rehearse -- --token 0x<token>
 # 3. look at the token's details first (sends nothing), then name it. THIS WORKS ONCE.
 npm run chain:admin -- set-token --network <net> --rewards 0x<contract> --token 0x<token>
 npm run chain:admin -- set-token --network <net> --rewards 0x<contract> --token 0x<token> --key-file <owner file> --yes
@@ -99,7 +132,8 @@ The server checks that its RPC is really on the chosen network before it accepts
 4. Verify the contract source on BscScan (`forge verify-contract`, with your own BscScan API key).
 5. **Tokenomics:** Flap sells the token to the public on its price curve, so the percentage allocation in
    `gametokenomics.md` (40% community, 15% team, ...) cannot be done by handing out a minted supply. Rewards are
-   funded with the developer's launch buy. A taxed or non-18-decimal token will not work.
+   funded with the developer's launch buy. A token that takes a fee on ordinary transfers, or does not have
+   18 decimals, will not work. `set-token` refuses an unrecognised token on mainnet unless `--unreviewed-token` is given.
 
 ## Weekly operations
 

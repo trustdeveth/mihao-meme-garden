@@ -95,11 +95,11 @@ WASD / arrows to move (walk 3.2 m/s), Shift to run (6.2 m/s; long click-walks ru
 - **Promotion** (rebirth): full soil + Magistrate's Treehouse resets the garden for a permanent Rank Star (+5% sales each).
 - **Avatar editor, friends** (codes, join a friend's village), **mute/report**, **postcards**, **sound and music**, **Magnifier values** and **buddy hearts** on plant labels.
 
-## MGRD token layer (optional, not deployed)
+## MGRD token layer (optional, features off)
 
 BNB Chain contracts for weekly MGRD reward claims, MGRD-shop payments and the Garden Club, with wallet linking
 (MetaMask, Trust Wallet, Binance Wallet), Season Points and a Rewards panel in the game (Menu > MGRD Rewards). It
-stays off until the server has `MG_REWARDS_CONTRACT` and `MG_MGRD_TOKEN`. Nothing is deployed on testnet or mainnet
+stays off until the server has `MG_REWARDS_CONTRACT` and `MG_MGRD_TOKEN`. It is built for a Flap tax token. The rewards contract is on BSC mainnet at `0x8ca1E92fEff93Da4337baf2a98faf9FbdCa05d05`, with no token connected and the features still off. Nothing is on testnet
 yet. Contracts, testing, deployment and weekly operations: see [chain/README.md](chain/README.md).
 
 ## Deploy the client on Vercel (game server elsewhere)

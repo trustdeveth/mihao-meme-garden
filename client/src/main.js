@@ -26,6 +26,7 @@ import { PlazaExtras } from './scene/fireworks.js';
 import { Audio } from './audio.js';
 import { createFeatures } from './ui/features.js';
 import { createMgrd } from './chain/mgrd.js';
+import { siteLinks, linkMenuItems } from './links.js';
 import { BALLOON, BOARD, onIsland } from '@mg/shared/world/village-layout';
 import { DECOR, HOME_SPOT, NEST_SPOT, ISLAND } from '@mg/shared/data/features';
 import { canPlaceDecor, DECOR_MSG } from '@mg/shared/rules/estate';
@@ -302,6 +303,7 @@ function wireInput(dom) {
   })));
   document.querySelectorAll('[data-panel]').forEach((b) => b.addEventListener('click', () => openPanel(b.dataset.panel)));
   $('settingsBtn').addEventListener('click', openSettings);
+  siteLinks();
   $('festBanner').addEventListener('click', () => F.festival());
   document.addEventListener('click', (e) => { if (e.target.closest('button')) audio?.play('click'); }, true);
   // touch controls
@@ -794,7 +796,7 @@ function openPanel(name) {
     });
     hud.panel = 'room';
   } else if (name === 'more') {
-    F.more([['mgrd', '$MGRD Rewards', () => window.__mgOpenMgrd?.()], ['settings', 'Settings', openSettings]]);
+    F.more([['mgrd', '$MGRD Rewards', () => window.__mgOpenMgrd?.()], ['settings', 'Settings', openSettings], ...linkMenuItems()]);
   }
 }
 

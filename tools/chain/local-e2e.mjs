@@ -65,7 +65,7 @@ async function refused(c, call, name, what = name) {
 assert.equal(await rw('token'), '0x0000000000000000000000000000000000000000');
 assert.equal(await rw('poolBalance'), 0n);
 const root = `0x${'11'.repeat(32)}`;
-for (const [c, call] of [[admin, onRewards('openEpoch', [1n, root, 1n, 9_999_999_999n])], [admin, onRewards('withdrawUnreserved', [A, 0n])], [alice, onRewards('claim', [1n, 0n, A, 1n, []])], [alice, onRewards('payOrder', [`0x${'ab'.repeat(16)}`, 1n, 9_999_999_999n])], [alice, onRewards('clubLock', [1n, 30])]]) await refused(c, call, 'TokenNotSet', `${call.functionName} before the token`);
+for (const [c, call] of [[admin, onRewards('rescueOther', [A, T])], [admin, onRewards('openEpoch', [1n, root, 1n, 9_999_999_999n])], [admin, onRewards('withdrawUnreserved', [A, 0n])], [alice, onRewards('claim', [1n, 0n, A, 1n, []])], [alice, onRewards('payOrder', [`0x${'ab'.repeat(16)}`, 1n, 9_999_999_999n])], [alice, onRewards('clubLock', [1n, 30])]]) await refused(c, call, 'TokenNotSet', `${call.functionName} before the token`);
 await refused(alice, clubUnlockCall({ rewards: D.rewards }), 'ZeroAmount');
 
 const TOKEN = await create('TestToken', [admin.account.address, 18]);
@@ -92,6 +92,37 @@ const balance = (a) => tok('balanceOf', [a]);
 await tool('fund', ...NET, '--rewards', D.rewards, '--amount', '500000', '--key-file', keyFile);
 assert.equal(await rw('poolBalance'), M(500_000));
 step('contract deployed before the token; token set once only (18 decimals, owner only); reward pool funded with 500,000');
+
+// a deploying key that must not be trusted: the safe wallet owns the contract from the first moment
+{
+  await assert.rejects(deploy(stranger, { owner: T }), /treasury/);
+  const safe = await deploy(stranger, { owner: A, treasury: T });
+  const read = (functionName) => admin.pub.readContract({ address: safe.rewards, abi: REWARDS_ABI, functionName });
+  assert.equal(await read('owner'), A);
+  assert.equal(await read('treasury'), T);
+  await refused(stranger, { address: safe.rewards, abi: REWARDS_ABI, functionName: 'setToken', args: [D.token] }, 'OwnableUnauthorizedAccount', 'the deploying key naming the token');
+  await refused(stranger, { address: safe.rewards, abi: REWARDS_ABI, functionName: 'setTreasury', args: [stranger.account.address] }, 'OwnableUnauthorizedAccount');
+}
+step('deployed for another owner: the deploying key has no control');
+
+// holder dividends paid in something else can be taken out; the game token never can this way
+{
+  const dividend = await create('TestToken', [admin.account.address, 18]);
+  const holds = (token, a) => admin.pub.readContract({ address: token, abi: TOKEN_ABI, functionName: 'balanceOf', args: [a] });
+  await send(admin, transferCall({ token: dividend, to: D.rewards, amount: M(7) }));
+  await admin.pub.waitForTransactionReceipt({ hash: await stranger.wallet.sendTransaction({ to: D.rewards, value: UNIT }) });
+  await refused(admin, onRewards('rescueOther', [D.token, T]), 'GameToken', 'taking the game token as "something else"');
+  await refused(alice, onRewards('rescueOther', [dividend, A]), 'OwnableUnauthorizedAccount');
+  await refused(admin, onRewards('rescueOther', [dividend, D.rewards]), 'BadAddress');
+  const before = await admin.pub.getBalance({ address: stranger.account.address });
+  await tool('rescue', ...NET, '--rewards', D.rewards, '--asset', dividend, '--to', T, '--key-file', keyFile);
+  await tool('rescue', ...NET, '--rewards', D.rewards, '--asset', 'bnb', '--to', stranger.account.address, '--key-file', keyFile);
+  assert.equal(await holds(dividend, T), M(7));
+  assert.equal(await admin.pub.getBalance({ address: stranger.account.address }), before + UNIT);
+  await refused(admin, onRewards('rescueOther', ['0x0000000000000000000000000000000000000000', T]), 'ZeroAmount');
+  assert.equal(await rw('poolBalance'), M(500_000), 'the pool is untouched');
+}
+step('BNB and other tokens that reach the contract can be taken out by the owner; the game token cannot');
 
 // a taxed token must not be able to leave the club short
 {

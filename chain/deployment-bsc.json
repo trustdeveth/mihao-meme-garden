@@ -1,0 +1,10 @@
+{
+  "network": "bsc",
+  "chainId": 56,
+  "rewards": "0x8ca1E92fEff93Da4337baf2a98faf9FbdCa05d05",
+  "treasury": "0x240ACF16b5401E2EDb543B798aCA6BC3041b948d",
+  "owner": "0x240ACF16b5401E2EDb543B798aCA6BC3041b948d",
+  "deployer": "0x240ACF16b5401E2EDb543B798aCA6BC3041b948d",
+  "token": "",
+  "deployedAt": "2026-11-25T19:47:57.285Z"
+}

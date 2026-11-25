@@ -142,7 +142,8 @@ footer a { color:var(--gold); }
 <tr><td>Type</td><td>BEP-20 token on BNB Smart Chain, 18 decimals, launched on Flap</td></tr>
 <tr><td>Supply</td><td>1,000,000,000 maximum on Flap. Burned tokens go to an address nobody controls, so the supply number does not drop.</td></tr>
 <tr><td>Token rules</td><td>Set by Flap's token contract. They can only be checked once the token exists.</td></tr>
-<tr><td>Transfer tax</td><td>Planned: none</td></tr>
+<tr><td>Trading tax</td><td>Planned: a Flap tax token. The rates and how long the tax lasts have not been announced.</td></tr>
+<tr><td>Where the tax applies</td><td>Buying and selling. In the Flap token code we reviewed, ordinary transfers such as claims, shop payments, tips and Garden Club locks are not taxed.</td></tr>
 </table></div>
 
 <h3 id="allocation">Supply and reward funding</h3>
@@ -198,7 +199,7 @@ footer a { color:var(--gold); }
 <tr><td>Sprout badge</td><td>1,000 MGRD</td><td>Name badge; poll vote weight 1</td></tr>
 <tr><td>Bloom badge</td><td>10,000 MGRD</td><td>Name badge; poll vote weight 2</td></tr>
 <tr><td>Golden Tree badge</td><td>100,000 MGRD</td><td>Name badge; poll vote weight 3</td></tr>
-<tr><td>Garden Club</td><td>Lock at least 5,000 MGRD for 30 days</td><td>Club badge, golden name, lantern and 10 extra decoration slots. No interest is paid.</td></tr>
+<tr><td>Garden Club</td><td>Lock at least 5,000 MGRD for 30 days</td><td>Club badge, golden name, lantern and 10 extra decoration slots. No interest is paid, and players get no holder dividends on tokens while they are locked.</td></tr>
 </table></div>
 
 <h3 id="flow">Where shop payments go</h3>
@@ -226,9 +227,11 @@ footer a { color:var(--gold); }
 <li>pause claims, shop payments and new Garden Club locks (unlocking still works);</li>
 <li>publish each week's reward list;</li>
 <li>move vault tokens that are not reserved for an open reward week and are not locked in the Garden Club;</li>
+<li>take out BNB or other tokens (not MGRD) that reach the contract, including holder dividends;</li>
 <li>hand the owner role to another account, which has to accept it.</li>
 </ul>
 <p>The owner cannot take Garden Club locks, withdraw tokens reserved for an open reward week, or swap the connected token for another. The rewards contract cannot be upgraded, so these rules cannot be changed after deployment. The owner does choose who is on each week's reward list. The contract has not had an independent security review.</p>
+<p><strong>Holder dividends.</strong> It has not been decided whether the token pays them. If it does, the rewards contract earns them as a holder, including on tokens locked in the Garden Club. Dividends paid in MGRD join the rewards vault. Dividends paid in anything else can be taken out by the team. Players do not receive them for locked tokens.</p>
 </section>
 
 <section id="risks">
@@ -236,6 +239,7 @@ footer a { color:var(--gold); }
 <ul>
 <li><strong>Nothing is final.</strong> The token name, allocation, prices, rewards and launch can all change, or the token may never launch.</li>
 <li><strong>No value is promised.</strong> A crypto token can lose all of its value, and there may be no buyers.</li>
+<li><strong>Trading tax.</strong> With a tax token, part of each buy and sell is taken as tax. Check the rates before you trade.</li>
 <li><strong>Software can fail.</strong> Do not treat the contracts as audited or risk-free. The rewards contract cannot be upgraded, so a mistake in it cannot be patched in place.</li>
 <li><strong>Paid random items.</strong> Pet eggs are random. Rules for paid random items differ by country and age.</li>
 <li><strong>Paid help.</strong> Pets, paid Grow All and larger soil may help a player earn more festival points.</li>

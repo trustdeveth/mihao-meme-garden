@@ -46,5 +46,6 @@ test('networks, 18-decimal amounts and what the contract cannot do', () => {
   assert.equal(toNumber(toBase(1_000_000_000)), 1_000_000_000);
   const names = REWARDS_ABI.filter((x) => x.type === 'function').map((x) => x.name);
   assert.ok(names.includes('setToken'));
-  assert.ok(!names.some((n) => /mint|upgrade|rescue|sweep/i.test(n)));
+  // the one way out for other assets refuses the game token (checked on a chain by `npm run chain:e2e`)
+  assert.deepEqual(names.filter((n) => /mint|upgrade|rescue|sweep/i.test(n)), ['rescueOther']);
 });

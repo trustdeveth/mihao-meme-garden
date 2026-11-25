@@ -66,7 +66,7 @@ footer a { color:var(--gold); }
   <a href="#meme">Meme features</a>
   <a href="#tokenomics">Tokenomics</a>
   <a class="sub" href="#token">The token</a>
-  <a class="sub" href="#allocation">Allocation</a>
+  <a class="sub" href="#allocation">Reward funding</a>
   <a class="sub" href="#rewards">Rewards</a>
   <a class="sub" href="#spending">Spending</a>
   <a class="sub" href="#flow">Payment flow</a>
@@ -74,7 +74,7 @@ footer a { color:var(--gold); }
   <a href="#risks">Risks</a>
 </nav>
 <main>
-<div class="notice" role="note"><strong>MGRD is not live.</strong> It has not launched on Solana mainnet, and the game at mihaomeme.garden currently runs with token features switched off. Everything about the token below is a design that can change. It is not an offer to sell anything. No price, profit, yield or buyback is promised.</div>
+<div class="notice" role="note"><strong>MGRD is not live.</strong> It is planned for BNB Smart Chain and has not launched there. The game at mihaomeme.garden currently runs with token features switched off. Everything about the token below is a design that can change. It is not an offer to sell anything. No price, profit, yield or buyback is promised.</div>
 
 <section id="overview">
 <h2>Overview</h2>
@@ -132,31 +132,23 @@ footer a { color:var(--gold); }
 
 <section id="tokenomics">
 <h2>Tokenomics</h2>
-<p>MGRD is designed as an optional token for weekly rewards and in-game purchases. So far it has only been set up on Solana's test network (devnet), where it has no real value.</p>
+<p>MGRD is designed as an optional token for weekly rewards and in-game purchases. The plan is to launch it on Flap, on BNB Smart Chain. It has not launched. The game's rewards contract has been tested on a private test chain.</p>
 <p>Coins, gems, Season Points and Meme Points stay inside the game. They cannot be exchanged for MGRD.</p>
 
 <h3 id="token">The token</h3>
 <div class="scroll"><table>
 <tr><th>Item</th><th>Design</th></tr>
 <tr><td>Name</td><td>MGRD (working name; not checked or reserved)</td></tr>
-<tr><td>Type</td><td>Standard Solana (SPL) token, 6 decimals</td></tr>
-<tr><td>Supply</td><td>1,000,000,000 at creation; burns lower it</td></tr>
-<tr><td>Mint and freeze authority</td><td>None after setup on the test network</td></tr>
-<tr><td>Transfer tax</td><td>0%</td></tr>
+<tr><td>Type</td><td>BEP-20 token on BNB Smart Chain, 18 decimals, launched on Flap</td></tr>
+<tr><td>Supply</td><td>1,000,000,000 maximum on Flap. Burned tokens go to an address nobody controls, so the supply number does not drop.</td></tr>
+<tr><td>Token rules</td><td>Set by Flap's token contract. They can only be checked once the token exists.</td></tr>
+<tr><td>Transfer tax</td><td>Planned: none</td></tr>
 </table></div>
 
-<h3 id="allocation">Supply allocation (proposal)</h3>
-<p>This is a working proposal, not a final promise. The current setup does <strong>not</strong> enforce these buckets, locks or vesting. It creates the whole supply in a wallet controlled by the team.</p>
-<div class="scroll"><table>
-<tr><th>Bucket</th><th>Share</th><th>MGRD</th><th>Proposed release rules</th></tr>
-<tr><td>Community campaigns</td><td>40%</td><td>400,000,000</td><td>Locked reserve with published season budgets</td></tr>
-<tr><td>Operating treasury</td><td>20%</td><td>200,000,000</td><td>48-month release schedule</td></tr>
-<tr><td>Team</td><td>15%</td><td>150,000,000</td><td>12-month cliff, then equal releases in months 13–48</td></tr>
-<tr><td>Liquidity reserve</td><td>10%</td><td>100,000,000</td><td>Released in stages against a set cash budget</td></tr>
-<tr><td>Creators and partners</td><td>10%</td><td>100,000,000</td><td>Milestone grants, with 24–48-month vesting where suitable</td></tr>
-<tr><td>Early contributors</td><td>5%</td><td>50,000,000</td><td>3-month cliff, then 24-month vesting</td></tr>
-</table></div>
-<p>The proposal limits first-year community rewards to 6,000,000 MGRD, and at most 500,000 in a month. A week without funding would offer game-only prizes.</p>
+<h3 id="allocation">Supply and reward funding</h3>
+<p>Flap sells the token to the public as it launches. The team plans to fund player rewards with the tokens it buys at launch. The amount has not been decided.</p>
+<p>An earlier draft split the supply by percentage between community, team, treasury and others. That split does not apply to this launch.</p>
+<p>The rewards contract does not force the team to add funds. A weekly pool exists only after tokens are in the contract and the week is published. A week without funding would offer game-only prizes. The proposal still limits first-year community rewards to 6,000,000 MGRD, and at most 500,000 in a month.</p>
 
 <h3 id="rewards">Weekly rewards</h3>
 <p>A funded weekly pool is shared by Season Points, up to 100 a day. Purchases and token holdings add no points directly. However, pets and paid Grow All can add festival points through the harvests they help with.</p>
@@ -171,13 +163,13 @@ footer a { color:var(--gold); }
 <li><strong>Your share:</strong> weekly pool × your points ÷ all eligible points.</li>
 <li><strong>Pool:</strong> the current default setting is 100,000 MGRD. A pool exists only when it is funded and published.</li>
 <li><strong>Player cap:</strong> 1% of the pool. Small amounts carried from earlier weeks can be added on top.</li>
-<li><strong>Claiming:</strong> needs a linked wallet. The default claim period is 30 days.</li>
+<li><strong>Claiming:</strong> needs a linked BNB Chain wallet and a little BNB for the network fee. The default claim period is 30 days.</li>
 <li><strong>Publishing:</strong> the team finalizes and publishes each week.</li>
 </ul>
 <p>Example only: with one weekend festival, a player can reach about 620 points in a week. If all eligible players total 350,000 points and the pool is 100,000 MGRD, that player's share is about 177 MGRD. This is not a promise of any amount or value.</p>
 
 <h3 id="spending">Spending MGRD</h3>
-<p>Prices are fixed amounts of MGRD and do not follow a market price. They can change.</p>
+<p>Prices are fixed amounts of MGRD and do not follow a market price. They can change. Paying or locking asks the wallet twice: first to allow that exact amount, then to confirm. Each step needs a little BNB for the network fee. A payment sent after its price quote has expired is refused, so no MGRD is taken.</p>
 <div class="scroll"><table>
 <tr><th>Purchase</th><th>Price in MGRD</th></tr>
 <tr><td>Pet eggs: Common, Rare, Legendary</td><td>500; 2,000; 6,000</td></tr>
@@ -218,7 +210,7 @@ footer a { color:var(--gold); }
 <g fill="#FFFBF0" stroke="#17120F" stroke-width="1.5"><rect x="270" y="16" width="220" height="60" rx="8"/><rect x="100" y="132" width="220" height="60" rx="8" fill="#FBE7B8" stroke-width="2.5"/><rect x="440" y="132" width="220" height="60" rx="8"/><rect x="100" y="244" width="220" height="60" rx="8"/><rect x="396" y="244" width="156" height="60" rx="8"/><rect x="568" y="244" width="156" height="60" rx="8"/></g>
 <g text-anchor="middle">
 <g font-weight="700"><text x="380" y="42">Shop payment</text><text x="210" y="158">Rewards vault: 50</text><text x="550" y="158">Treasury: 50</text><text x="210" y="270">Weekly player rewards</text><text x="474" y="270">Set to burn: 20</text><text x="646" y="270">Operations: 30</text></g>
-<g font-size="12" fill="#5E4130"><text x="380" y="62">example: 100 MGRD</text><text x="210" y="178">held by the on-chain program</text><text x="550" y="178">controlled by the team</text><text x="210" y="290">shared by Season Points</text><text x="474" y="290">burned by hand</text><text x="646" y="290">the remainder</text></g>
+<g font-size="12" fill="#5E4130"><text x="380" y="62">example: 100 MGRD</text><text x="210" y="178">held by the game's contract</text><text x="550" y="178">controlled by the team</text><text x="210" y="290">shared by Season Points</text><text x="474" y="290">burned by hand</text><text x="646" y="290">the remainder</text></g>
 </g>
 <text x="48" y="344" font-size="12" fill="#5E4130">Dashed line: players may spend rewards in the shop again.</text>
 </svg>
@@ -226,16 +218,17 @@ footer a { color:var(--gold); }
 </figure>
 
 <h3 id="controls">What the team can change</h3>
-<p>In the current test-network program design, the team's admin account can:</p>
+<p>In the current design, the owner account of the rewards contract, held by the team, can:</p>
 <ul>
+<li>connect the token to the rewards contract, which works only once;</li>
 <li>change the share of shop payments that goes to the rewards vault, anywhere from 0% to 100%;</li>
 <li>change the treasury account;</li>
-<li>pause token features in the program;</li>
+<li>pause claims, shop payments and new Garden Club locks (unlocking still works);</li>
 <li>publish each week's reward list;</li>
-<li>move vault tokens that are not reserved for an open reward week;</li>
-<li>hand the admin role to another account.</li>
+<li>move vault tokens that are not reserved for an open reward week and are not locked in the Garden Club;</li>
+<li>hand the owner role to another account, which has to accept it.</li>
 </ul>
-<p>Tokens reserved for an open reward week cannot be withdrawn by this admin action. However, Solana programs can normally be upgraded unless that right is removed, and whoever holds it can change the program's rules. The program has not had an independent security review.</p>
+<p>The owner cannot take Garden Club locks, withdraw tokens reserved for an open reward week, or swap the connected token for another. The rewards contract cannot be upgraded, so these rules cannot be changed after deployment. The owner does choose who is on each week's reward list. The contract has not had an independent security review.</p>
 </section>
 
 <section id="risks">
@@ -243,11 +236,11 @@ footer a { color:var(--gold); }
 <ul>
 <li><strong>Nothing is final.</strong> The token name, allocation, prices, rewards and launch can all change, or the token may never launch.</li>
 <li><strong>No value is promised.</strong> A crypto token can lose all of its value, and there may be no buyers.</li>
-<li><strong>Software can fail.</strong> Do not treat the program as audited or risk-free.</li>
+<li><strong>Software can fail.</strong> Do not treat the contracts as audited or risk-free. The rewards contract cannot be upgraded, so a mistake in it cannot be patched in place.</li>
 <li><strong>Paid random items.</strong> Pet eggs are random. Rules for paid random items differ by country and age.</li>
 <li><strong>Paid help.</strong> Pets, paid Grow All and larger soil may help a player earn more festival points.</li>
-<li><strong>Other payment methods.</strong> Card, SOL and stablecoin checkout are not available.</li>
-<li><strong>Beware of fakes.</strong> MGRD has not launched on mainnet. Be careful with any token or message that says you can buy it now.</li>
+<li><strong>Other payment methods.</strong> Card, BNB and stablecoin checkout are not available. BNB is only needed for network fees.</li>
+<li><strong>Beware of fakes.</strong> MGRD has not launched on any public network, so there is no official contract address yet. Be careful with any token or message that says you can buy it now.</li>
 </ul>
 <p>This page is general information, not financial, investment or legal advice.</p>
 </section>

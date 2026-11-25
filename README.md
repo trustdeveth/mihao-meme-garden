@@ -1,6 +1,6 @@
 # Meme Garden (multiplayer, Phase 1)
 
-A free, server-authoritative multiplayer 3D garden game. No wallet, token or smart contract: the web3 layer comes later (see `../gametokenomics.md`). The old single-player demo stays untouched in `../meme-garden-demo`.
+A free, server-authoritative multiplayer 3D garden game. No wallet is needed to play: the BNB Chain token layer is optional and off by default (see `chain/README.md`). The old single-player demo stays untouched in `../meme-garden-demo`.
 
 ## The Mihao look
 
@@ -97,9 +97,10 @@ WASD / arrows to move (walk 3.2 m/s), Shift to run (6.2 m/s; long click-walks ru
 
 ## MGRD token layer (optional, not deployed)
 
-A Solana program for weekly MGRD reward claims and MGRD-shop payments, with wallet linking, Season Points and a
-Rewards panel in the game (Menu > MGRD Rewards). It stays off until the server has `MG_PROGRAM_ID` and
-`MG_MGRD_MINT`. Build, local testing, deployment and weekly operations: see [chain/README.md](chain/README.md).
+BNB Chain contracts for weekly MGRD reward claims, MGRD-shop payments and the Garden Club, with wallet linking
+(MetaMask, Trust Wallet, Binance Wallet), Season Points and a Rewards panel in the game (Menu > MGRD Rewards). It
+stays off until the server has `MG_REWARDS_CONTRACT` and `MG_MGRD_TOKEN`. Nothing is deployed on testnet or mainnet
+yet. Contracts, testing, deployment and weekly operations: see [chain/README.md](chain/README.md).
 
 ## Deploy the client on Vercel (game server elsewhere)
 

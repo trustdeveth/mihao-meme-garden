@@ -1,32 +1,50 @@
-// The JS reward-proof code must hash exactly like the Rust program (chain/programs/garden_rewards).
+// The JS reward-proof code must hash exactly like the contract (chain/contracts/GardenRewards.sol).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PublicKey } from '@solana/web3.js';
-import { leafHash, buildTree, verifyProof, toHex, pdas, claimIx, payOrderIx } from '../src/chain/program.js';
+import { decodeFunctionData, encodeFunctionData } from 'viem';
+import { leafHash, buildTree, verifyProof, claimCall, payOrderCall, approveCall, orderIdBytes, toBase, toNumber, viemChain, NETWORKS, REWARDS_ABI } from '../src/chain/evm.js';
 
-const PROGRAM = '4buGybqEKaVm4cQzvdmcwpkZrz94qea4a4yhe97GBNfP';
-const pk = (n) => new PublicKey(new Uint8Array(32).fill(n));
+const addr = (n) => `0x${n.toString(16).padStart(2, '0').repeat(20)}`;
+const WHERE = { chainId: 97, rewards: addr(0x11), token: addr(0x22) };
 
-test('leaf hash matches the Rust test vector', () => {
-  // printed by `cargo test leaf_vector` in chain/ (program id 4buGy...)
-  assert.equal(toHex(leafHash(PROGRAM, pk(9), 7, 3, pk(4), 1_234_567)), 'c88c2436f106d90aea05a8607305b37b8b59369f44ac11b302c79129031f7328');
+test('leaf hash matches the contract (value returned by the contract itself; npm run chain:e2e also compares them live)', () => {
+  assert.equal(leafHash(WHERE, 7, 3, addr(4), 1_234_567n), '0xe6f590a48ea65838e7e86cf902384d189b9a1923d9a44a42b71b8bbccb8fe085');
 });
 
 test('every proof verifies and no field can be changed', () => {
-  const leaves = Array.from({ length: 7 }, (_, i) => leafHash(PROGRAM, pk(9), 2, i, pk(i + 1), 1000 + i));
+  const leaves = Array.from({ length: 7 }, (_, i) => leafHash(WHERE, 2, i, addr(i + 1), 1000 + i));
   const t = buildTree(leaves);
   for (let i = 0; i < leaves.length; i++) {
-    assert.ok(verifyProof(leaves[i], t.proof(i), t.root));
-    assert.ok(!verifyProof(leafHash(PROGRAM, pk(9), 2, i, pk(i + 1), 1001 + i), t.proof(i), t.root));
-    assert.ok(!verifyProof(leafHash(PROGRAM, pk(9), 3, i, pk(i + 1), 1000 + i), t.proof(i), t.root));
+    const proof = t.proof(i);
+    assert.ok(verifyProof(leaves[i], proof, t.root));
+    for (const forged of [
+      leafHash(WHERE, 2, i, addr(i + 1), 1001 + i), leafHash(WHERE, 3, i, addr(i + 1), 1000 + i), leafHash(WHERE, 2, i + 1, addr(i + 1), 1000 + i),
+      leafHash(WHERE, 2, i, addr(99), 1000 + i), leafHash({ ...WHERE, chainId: 56 }, 2, i, addr(i + 1), 1000 + i),
+      leafHash({ ...WHERE, rewards: addr(0x33) }, 2, i, addr(i + 1), 1000 + i), leafHash({ ...WHERE, token: addr(0x33) }, 2, i, addr(i + 1), 1000 + i),
+    ]) assert.ok(!verifyProof(forged, proof, t.root));
   }
 });
 
-test('instructions carry the right accounts', () => {
-  const ix = claimIx({ programId: PROGRAM, mint: pk(9), payer: pk(1), claimant: pk(1), epochId: 4, index: 2, amount: 50, proof: [new Uint8Array(32)] });
-  assert.equal(ix.keys.length, 9);
-  assert.equal(ix.keys[4].pubkey.toBase58(), pdas(PROGRAM).receipt(4, 2).toBase58());
-  assert.equal(ix.data.length, 8 + 8 + 4 + 8 + 4 + 32);
-  const po = payOrderIx({ programId: PROGRAM, mint: pk(9), payer: pk(1), treasury: pk(5), orderId: '00112233445566778899aabbccddeeff', amount: 10 });
-  assert.equal(po.data.length, 8 + 16 + 8);
+test('contract calls carry the right values', () => {
+  const data = (c) => decodeFunctionData({ abi: c.abi, data: encodeFunctionData(c) });
+  const claim = data(claimCall({ rewards: WHERE.rewards, epochId: 4, index: 2, claimant: addr(1), amount: '50', proof: [`0x${'00'.repeat(32)}`] }));
+  assert.equal(claim.functionName, 'claim');
+  assert.deepEqual(claim.args.slice(0, 2), [4n, 2n]);
+  const pay = data(payOrderCall({ rewards: WHERE.rewards, orderId: '00112233445566778899aabbccddeeff', amount: '10', deadline: 99 }));
+  assert.deepEqual(pay.args, ['0x00112233445566778899aabbccddeeff', 10n, 99n]);
+  const ok = data(approveCall({ token: WHERE.token, rewards: WHERE.rewards, amount: 10n }));
+  assert.equal(ok.args[1], 10n, 'only the exact amount is approved');
+  assert.throws(() => orderIdBytes('abc'));
+});
+
+test('networks, 18-decimal amounts and what the contract cannot do', () => {
+  assert.deepEqual([NETWORKS.bsc.chainId, NETWORKS['bsc-testnet'].chainId], [56, 97]);
+  assert.equal(viemChain('bsc-testnet').id, 97);
+  assert.throws(() => viemChain('solana'));
+  assert.equal(toBase(1500), 1500n * 10n ** 18n, 'no floating point error');
+  assert.equal(toBase('12.5'), 125n * 10n ** 17n);
+  assert.equal(toNumber(toBase(1_000_000_000)), 1_000_000_000);
+  const names = REWARDS_ABI.filter((x) => x.type === 'function').map((x) => x.name);
+  assert.ok(names.includes('setToken'));
+  assert.ok(!names.some((n) => /mint|upgrade|rescue|sweep/i.test(n)));
 });

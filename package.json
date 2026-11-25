@@ -2,7 +2,7 @@
   "name": "meme-garden",
   "private": true,
   "version": "0.1.0",
-  "description": "Meme Garden: free multiplayer 3D garden game (server-authoritative, no web3)",
+  "description": "Meme Garden: free multiplayer 3D garden game (server-authoritative; optional BNB Chain token layer, off by default)",
   "type": "module",
   "workspaces": [
     "shared",
@@ -30,12 +30,9 @@
     "shares": "node tools/share-admin.mjs",
     "showcase": "node e2e/showcase.mjs",
     "load": "node tools/load/bots.mjs",
-    "chain:setup-wsl": "wsl -d Ubuntu -- bash /mnt/d/work/meme/solana-garden-plan/meme-garden/chain/scripts/wsl-setup.sh",
-    "chain:build": "wsl -d Ubuntu -- bash /mnt/d/work/meme/solana-garden-plan/meme-garden/chain/scripts/build.sh",
-    "chain:validator": "wsl -d Ubuntu -- bash /mnt/d/work/meme/solana-garden-plan/meme-garden/chain/scripts/local-validator.sh",
+    "chain:build": "node tools/chain/build.mjs",
     "chain:e2e": "node tools/chain/local-e2e.mjs",
     "chain:admin": "node tools/chain/admin.mjs",
-    "dev:devnet": "node scripts/dev-devnet.mjs",
-    "chain:devnet-e2e": "node tools/chain/devnet-e2e.mjs"
+    "dev:testnet": "node scripts/dev-testnet.mjs"
   }
 }

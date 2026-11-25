@@ -1,8 +1,0 @@
-{
-  "name": "Meme Garden",
-  "symbol": "MGRD",
-  "description": "The optional reward and cosmetics token of Meme Garden, a cozy multiplayer garden game. Fixed supply; no promised price or income.",
-  "image": "https://YOUR-GAME-DOMAIN/token/mgrd.png",
-  "external_url": "https://YOUR-GAME-DOMAIN",
-  "properties": { "files": [{ "uri": "https://YOUR-GAME-DOMAIN/token/mgrd.png", "type": "image/png" }], "category": "image" }
-}

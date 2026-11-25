@@ -1,5 +1,5 @@
-target
-.anchor
-*.so.tmp
-# program keypair: keep a backup somewhere safe, never publish it
-target/deploy/*-keypair.json
+out/
+cache/
+# never commit keys
+*.key
+keys/

@@ -1,0 +1,27 @@
+Devnet test 2026-11-11T14:48:27.976Z
+program 4buGybqEKaVm4cQzvdmcwpkZrz94qea4a4yhe97GBNfP
+mint 59jtELR1TMPsx9ogXSvX85RNh9fLnJD3YRVndFqfZBjw
+
+- setup already done: MGRD mint 59jtELR1TMPsx9ogXSvX85RNh9fLnJD3YRVndFqfZBjw
+- token checks: supply 999,999,600 MGRD (1B minus public burns), mint authority none, freeze authority none
+- test wallets alice 5r4SFcFZ... and bob 3YpSvbG4... funded with devnet SOL
+    tx: https://explorer.solana.com/tx/4dGeX3XJ63Vb6UwKt75nbcCezDF9LAZQbYFktJ58KAcnzXQRMAMu9WBG8KBMwbSo79WL8YcxKo5daRGd6S29gsm9?cluster=devnet
+- wallet linking: alice linked by a signed message; a signature from another wallet was rejected
+- season points: alice 700 of 3400 this week, live estimate 1000 MGRD (1% cap)
+- week finalized: 10 recipients, 10000 MGRD (alice capped at 1,000); root published on chain as epoch 1794408396
+    tx: https://explorer.solana.com/tx/5XGPsGBH5qZ1uZtg53Nm85KuC6SxxzJznSHHJUCnCB233DbotDZnFazTMYrPcNhhJZbfKf65rxgZ1ZGUYZjdwtie?cluster=devnet
+- claim: alice received 1,000 MGRD with her proof; the server now shows the week as claimed
+    tx: https://explorer.solana.com/tx/DkDQeUTqrKwMv3SAdVKuZPLHzX35oiXAJsqzNhA9MywGCv9LvVmbUwcBs5Zk5Ezx5opWunoXk1CcFKT4NxofiLE?cluster=devnet
+- attacks rejected: claiming twice, a forged amount, and another wallet using someone else's proof
+- MGRD shop: Aurora Cap for its fixed price of 1500 $MGRD, paid on chain (50% to the rewards vault, 50% to the treasury), server verified the receipt and granted it once; paying the same order again was rejected
+    tx: https://explorer.solana.com/tx/52TAiHqvn85RyM56HaHMyfaBwkU9oKziefHLMD546Ag9uT5HyXGVrGgBeGxFsHFawmAjNKhrkaqky9oiQ4eiCpbH?cluster=devnet
+- reserve protection: vault holds 209771.75 MGRD, 20000 reserved for open weeks; withdrawing reserved MGRD and closing early were rejected
+- deadline: a claim after the deadline was rejected; the week was closed and its 9000 unclaimed MGRD stay in the vault for later weeks
+    tx: https://explorer.solana.com/tx/4886PS8E1X8CJ9U9smobDJkZumP1CcpVCyRPKrLn8rdFAw4XuLgEqm5cWPGjuhwJbC6qxZiuyhFFqkKCcKFWxJ7a?cluster=devnet
+- $MGRD purchases: Rare Egg 2000, Stone Fountain 6000, sky-blue hair 600, Expand Soil 1000 $MGRD (coins untouched); each verified on chain and granted once
+    tx: https://explorer.solana.com/tx/5unr6ZSXfvPvgHn8kASMUEzhMjv4PpXweBVa6bmCS1nM24snDL9GXuugXqqrRavP4xaTweJSNXBniFju8ZjxhNai?cluster=devnet
+- limited drop: Founder's Crown #1 of 500 for 10000 $MGRD; a second one for the same player was refused
+    tx: https://explorer.solana.com/tx/2Sjs5fJYfN1UUoDNi3TJmKZ8Ufu5Z18MbrZGdUm5PkdC9MytiXj1v2kN2SEGgFhVBgodEa64eDyY8GetBUXUWXs?cluster=devnet
+- holder badge "Bloom"; Garden Club: 6,000 $MGRD locked for 30 days in alice's own lock account, club badge and lantern granted, unlocking early rejected
+    tx: https://explorer.solana.com/tx/EAP4WuQKNbHaywfJESnqg8f2W8UT1rnh6FDGqeWwurdQY35o3amfSJFMYLiDriTnVT9zpKVmsbuGkWrGeMZDRiw?cluster=devnet
+- pause switch: payments were blocked while paused, then unpaused

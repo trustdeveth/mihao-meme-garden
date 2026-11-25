@@ -1,0 +1,18 @@
+{
+  "name": "@mg/tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Model, texture, icon and review generators (run in headless Chrome via puppeteer-core).",
+  "dependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "@mg/shared": "*",
+    "@solana/spl-token": "0.4.14",
+    "meshoptimizer": "^1.3.0",
+    "puppeteer-core": "^25.0.0",
+    "three": "^0.187.0",
+    "ws": "^8.18.0"
+  }
+}

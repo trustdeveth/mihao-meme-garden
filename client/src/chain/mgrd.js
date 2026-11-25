@@ -1,0 +1,295 @@
+// $MGRD rewards panel: link a Solana wallet, see this week's Season Points, claim finalized weekly rewards and buy
+// MGRD-shop cosmetics. The Solana libraries load only when this panel is opened (separate chunk).
+import { icon, esc, short, checklist, tick } from '../ui/hud.js';
+import { mgrdPrice } from '@mg/shared/rules/mgrd';
+import { HOLDER_TIERS } from '@mg/shared/data/mgrd';
+
+const api = async (path, body) => {
+  const r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined, credentials: 'same-origin' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`);
+  return d;
+};
+const shortAddr = (a) => (a ? `${a.slice(0, 4)}...${a.slice(-4)}` : '');
+const mgrd = (units) => (Number(units) / 1e6).toLocaleString('en-US', { maximumFractionDigits: 2 });
+const when = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600); return d ? `${d}d ${h}h` : `${h}h ${Math.floor((s % 3600) / 60)}m`; };
+
+/** Installed Solana wallets (browser extensions or in-app wallet browsers). */
+const WALLETS = [
+  { id: 'phantom', name: 'Phantom', url: 'https://phantom.app', get: (w) => w.phantom?.solana ?? (w.solana?.isPhantom ? w.solana : null) },
+  { id: 'solflare', name: 'Solflare', url: 'https://solflare.com', get: (w) => w.solflare ?? null },
+  { id: 'backpack', name: 'Backpack', url: 'https://backpack.app', get: (w) => w.backpack?.solana ?? w.backpack ?? null },
+];
+const PICK_KEY = 'mg-wallet';
+export const installedWallets = () => WALLETS.filter((x) => x.get(window));
+let chosen = (() => { try { return localStorage.getItem(PICK_KEY); } catch { return null; } })();
+function provider() {
+  const list = installedWallets();
+  const w = list.find((x) => x.id === chosen) ?? list[0];
+  return w ? w.get(window) : null;
+}
+async function connectWallet() {
+  const p = provider();
+  if (!p) throw new Error('No Solana wallet found. Install Phantom, Solflare or Backpack, then reload.');
+  const r = p.isConnected && p.publicKey ? null : await p.connect();
+  const pk = r?.publicKey ?? p.publicKey;
+  return { p, address: pk.toString() };
+}
+
+export function createMgrd({ hud, store, onWardrobe }) {
+  let chain = null, lib = null, linked = null;
+  const load = async () => {
+    chain ??= await api('/api/chain');
+    if (chain.enabled && !lib) {
+      const [web3, prog] = await Promise.all([import('@solana/web3.js'), import('@mg/shared/chain/program')]);
+      lib = { web3, prog, conn: new web3.Connection(chain.rpc, 'confirmed') };
+    }
+    return chain;
+  };
+
+  /** Sign and send a transaction with the player's wallet, then wait for confirmation. */
+  async function sendTx(walletAddress, ixs) {
+    const { p, address } = await connectWallet();
+    if (address !== walletAddress) throw new Error(`Switch your wallet to ${shortAddr(walletAddress)} (the linked one) and try again.`);
+    const { web3, conn } = lib;
+    const tx = new web3.Transaction().add(...ixs);
+    tx.feePayer = new web3.PublicKey(address);
+    const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+    tx.recentBlockhash = blockhash;
+    const signed = await p.signTransaction(tx);
+    const sig = await conn.sendRawTransaction(signed.serialize());
+    const res = await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+    if (res.value.err) throw new Error('The transaction failed on chain.');
+    return sig;
+  }
+
+  async function link() {
+    const { p, address } = await connectWallet();
+    const { message } = await api('/api/wallet/challenge', {});
+    const signed = await p.signMessage(new TextEncoder().encode(message), 'utf8');
+    const sigBytes = signed?.signature ?? signed;
+    const { default: bs58 } = await import('bs58');
+    await api('/api/wallet/link', { address, signature: bs58.encode(sigBytes) });
+    linked = address;
+    button();
+    hud.toast(`Wallet ${shortAddr(address)} connected and signed!`, 'good');
+  }
+
+  // ---- top-bar wallet button ------------------------------------------------------------------------
+  const btn = document.getElementById('walletBtn');
+  function button() {
+    if (!btn) return;
+    btn.classList.toggle('on', !!linked);
+    btn.innerHTML = linked ? `${icon('check')}<b>${esc(shortAddr(linked))}</b>` : `${icon('key')}<b>Connect Wallet</b>`;
+    btn.title = linked ? `Linked wallet ${linked}` : 'Connect a Solana wallet and sign to link it';
+  }
+  /** Read the linked wallet from the server (called after joining). */
+  async function sync() {
+    try { await load(); } catch { /* chain info optional */ }
+    try { linked = (await api('/api/rewards')).wallet; } catch { linked = null; }
+    button();
+    if (linked && chain?.enabled) api('/api/holder').catch(() => {}); // refresh the badge next to your name
+  }
+  /** Connect + sign flow; asks which wallet to use when several are installed. */
+  async function connectFlow() {
+    await load();
+    if (!chain.enabled) return open('about');
+    const list = installedWallets();
+    if (!list.length) {
+      return hud.modal(`<h2>${icon('key', 'i big')}Connect Wallet</h2><p>No Solana wallet was found in this browser. Install one, switch it to <b>${esc(chain.cluster)}</b>, then reload the page.</p><div class="list">${WALLETS.map((x) => `<div class="row">${icon('key')}<div class="meta"><b>${x.name}</b><span>${x.url.replace('https://', '')}</span></div><a class="btn blue" href="${x.url}" target="_blank" rel="noopener">Get ${x.name}</a></div>`).join('')}</div>`);
+    }
+    const go = async (id) => {
+      chosen = id;
+      try { localStorage.setItem(PICK_KEY, id); } catch { /* private mode */ }
+      hud.modal(null);
+      hud.toast('Approve the connection, then sign the message in your wallet (free).', 'info', 8000);
+      try { await link(); } catch (e) { hud.toast(/reject|cancel|denied/i.test(e.message ?? '') ? 'Cancelled in the wallet.' : e.message ?? String(e), 'bad', 6000); }
+    };
+    if (list.length === 1) return go(list[0].id);
+    hud.modal(`<h2>${icon('key', 'i big')}Choose a wallet</h2><p class="soft">Make sure it is set to <b>${esc(chain.cluster)}</b>. Linking only needs a free signature.</p><div class="list">${list.map((x) => `<div class="row">${icon('key')}<div class="meta"><b>${x.name}</b><span>Installed</span></div><button class="btn gold" data-w="${x.id}">Connect</button></div>`).join('')}</div>`,
+      (el) => el.querySelectorAll('[data-w]').forEach((b) => b.addEventListener('click', () => go(b.dataset.w))));
+  }
+  function menu() {
+    hud.modal(`<h2>${icon('key', 'i big')}Your Wallet</h2><div class="row">${icon('check')}<div class="meta"><b>${esc(shortAddr(linked))}</b><span>${esc(linked)}</span></div><button class="btn blue" id="copyW">Copy</button></div>
+      <p><button class="btn gold" id="openR">${icon('mgrd')}$MGRD Rewards</button> <button class="btn blue" id="switchW">Switch wallet</button> <button class="btn red" id="discW">Disconnect</button></p>`, (el) => {
+      el.querySelector('#copyW').addEventListener('click', () => { navigator.clipboard?.writeText(linked); hud.toast('Address copied.', 'good'); });
+      el.querySelector('#openR').addEventListener('click', () => open('rewards'));
+      el.querySelector('#switchW').addEventListener('click', () => connectFlow());
+      el.querySelector('#discW').addEventListener('click', async () => {
+        await api('/api/wallet/unlink', {});
+        try { await provider()?.disconnect?.(); } catch { /* ignore */ }
+        linked = null; button(); hud.modal(null); hud.toast('Wallet disconnected.', 'info');
+      });
+    });
+  }
+  btn?.addEventListener('click', () => (linked ? menu() : connectFlow()));
+  button();
+
+  async function claim(a) {
+    const { prog } = lib;
+    const ixs = [prog.createAtaIdempotentIx(a.wallet, a.wallet, chain.mint), prog.claimIx({ programId: chain.programId, mint: chain.mint, payer: a.wallet, claimant: a.wallet, epochId: a.epoch, index: a.index, amount: BigInt(a.amount), proof: a.proof })];
+    await sendTx(a.wallet, ixs);
+    hud.toast(`Claimed ${mgrd(a.amount)} $MGRD!`, 'gold', 4000);
+  }
+
+  /** Pay for anything with $MGRD: quote -> pay_order on chain -> the server verifies the receipt and grants it. */
+  async function pay(kind, id, extra = {}) {
+    await load();
+    if (!linked) { await connectFlow(); if (!linked) throw new Error('Connect a wallet first.'); }
+    const q = await api('/api/mgrd/quote', { kind, id, ...extra });
+    const { prog } = lib;
+    await sendTx(linked, [prog.payOrderIx({ programId: q.programId, mint: q.mint, payer: linked, treasury: q.treasury, orderId: q.orderId, amount: BigInt(q.amount) })]);
+    // the server reads the on-chain receipt before granting it (retry briefly while the RPC catches up)
+    for (let i = 0; i < 8; i++) {
+      try {
+        const r = await api('/api/shop/confirm', { orderId: q.orderId });
+        onWardrobe?.(r.item);
+        hud.toast(r.msg || `${q.name}: done!`, 'gold', 4500);
+        return r;
+      } catch (e) { if (!/not found on chain/.test(e.message) || i === 7) throw e; await new Promise((r) => setTimeout(r, 1500)); }
+    }
+    return null;
+  }
+  const buy = (item) => pay('wear', item);
+
+  /** "or 12.3 $MGRD" button for any shop row (empty when the $MGRD shop is closed or the item is not possible now). */
+  function priceTag(kind, id) {
+    if (!chain?.shop || !store.me) return '';
+    const r = mgrdPrice(store.me, kind, id, store.now(), store.seed);
+    if (!r.ok) return '';
+    const amt = r.mgrd;
+    return `<button class="btn mgrdpay" data-mgrd="${kind}:${esc(id)}" title="Pay with $MGRD">${icon('mgrd')}${amt.toLocaleString('en-US', { maximumFractionDigits: 1 })} $MGRD</button>`;
+  }
+  /** Wire every price tag inside `el`; `after` reopens the panel when done. */
+  function bindTags(el, after) {
+    el.querySelectorAll('[data-mgrd]').forEach((b) => b.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const [kind, id] = b.dataset.mgrd.split(':');
+      try { hud.toast('Approve the payment in your wallet...', 'info', 8000); await pay(kind, id); } catch (e) { hud.toast(/reject|cancel|denied/i.test(e.message ?? '') ? 'Cancelled in the wallet.' : e.message ?? String(e), 'bad', 7000); }
+      after?.();
+    }));
+  }
+
+  // ---- Garden Club lock ------------------------------------------------------------------------------
+  async function clubLock(amountMgrd, days) {
+    await load();
+    const { prog } = lib;
+    await sendTx(linked, [prog.clubLockIx({ programId: chain.programId, mint: chain.mint, owner: linked, amount: BigInt(Math.round(amountMgrd * 1e6)), days })]);
+    hud.toast(`Locked ${amountMgrd.toLocaleString('en-US')} $MGRD. Welcome to the Garden Club!`, 'gold', 5000);
+  }
+  async function clubUnlock() {
+    await load();
+    const { prog } = lib;
+    await sendTx(linked, [prog.clubUnlockIx({ programId: chain.programId, mint: chain.mint, owner: linked })]);
+    hud.toast('Your $MGRD is back in your wallet.', 'good', 4000);
+  }
+
+  const run = (fn, tab) => async () => {
+    try { hud.toast('Check your wallet...', 'info', 6000); await fn(); } catch (e) { hud.toast(e.message ?? String(e), 'bad', 6000); }
+    open(tab);
+  };
+
+  async function open(tab = 'rewards') {
+    hud.modal(`<h2>${icon('mgrd', 'i big')}$MGRD Rewards</h2><p class="soft">Loading...</p>`);
+    let c, r, shop;
+    try { c = await load(); [r, shop] = await Promise.all([api('/api/rewards'), api('/api/shop')]); linked = r.wallet; button(); } catch (e) { return hud.modal(`<h2>${icon('mgrd', 'i big')}$MGRD Rewards</h2><p>${esc(e.message)}</p>`); }
+    const tabs = `<div class="tabsmall">${[['rewards', 'Weekly rewards'], ['shop', '$MGRD shop'], ['club', 'Garden Club'], ['community', 'Community'], ['about', 'How it works']].map(([id, l]) => `<button data-tab="${id}" class="${tab === id ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    const walletRow = r.wallet
+      ? `<div class="row">${icon('key')}<div class="meta"><b>Wallet ${esc(shortAddr(r.wallet))}</b><span>${c.enabled ? `Solana ${esc(c.cluster)}` : 'Linked'} · rewards are paid to this wallet</span></div><button class="btn red" id="unlink">Unlink</button></div>`
+      : `<div class="row">${icon('key')}<div class="meta"><b>No wallet linked</b><span>Link a Solana wallet to receive $MGRD. Signing the link message costs nothing.</span></div><button class="btn gold" id="link" ${c.enabled ? '' : 'disabled'}>Link wallet</button></div>`;
+    let body = '';
+    if (tab === 'rewards') {
+      const items = Object.keys(r.caps).map((k) => ({ label: r.labels[k], have: r.today[k] ?? 0, need: r.caps[k] }));
+      const allocs = r.allocations.map((a) => {
+        const expired = Date.now() / 1000 > a.deadline;
+        const action = a.claimed ? `<span class="worn">${icon('check')}Claimed</span>` : expired ? '<span class="soft">Expired</span>' : `<button class="btn gold" data-claim="${a.epoch}" ${c.enabled ? '' : 'disabled'}>Claim</button>`;
+        return `<div class="row ${a.claimed ? 'claimed' : ''}">${icon('mgrd')}<div class="meta"><b>Week of ${esc(a.week)}: ${mgrd(a.amount)} $MGRD</b><span>${a.points} points · to ${esc(shortAddr(a.wallet))}${!a.claimed && !expired ? ` · claim within ${when(a.deadline * 1000 - Date.now())}` : ''}</span></div>${action}</div>`;
+      }).join('') || '<p class="soft">No finished weeks yet. Results come every Wednesday for the week before.</p>';
+      body = `${walletRow}<h3>This week (${esc(r.week)})</h3><p><b>${r.points}</b> Season Points so far · resets in ${when(r.weekEnds - Date.now())}${r.wallet ? ` · estimate <b>~${short(r.estimate)} $MGRD</b> of the ${short(r.pool)} pool (max 1% each)` : ''}</p>${checklist(items, `Today: ${r.dayTotal} / ${r.dayCap} points`)}<h3>Weeks to claim</h3><div class="list">${allocs}</div>`;
+    } else if (tab === 'shop') {
+      const owned = new Set(store.me?.wardrobe ?? []);
+      body = `${walletRow}<p class="soft">Exclusive cosmetics, only for $MGRD. Cosmetic only: they never change growth, prices or rewards.</p><div class="wear">${shop.items.map((it) => `<div class="wearcard special"><i class="wsw" style="background:${it.color}"></i><b>${esc(it.name)}</b>${owned.has(it.id) ? `<span class="worn">${icon('check')}Owned</span>` : `<button class="btn gold" data-buy="${it.id}" ${shop.enabled && r.wallet ? '' : 'disabled'}>${it.mgrd ? `${icon('mgrd')}${mgrd(it.mgrd)} $MGRD` : 'Soon'}</button>`}</div>`).join('')}</div><h3>Limited drops</h3><p class="soft">Numbered and only sold for $MGRD. When they are gone, they are gone.</p><div class="wear">${shop.limited.map((L) => { const mine = store.me?.editions?.[L.id]; return `<div class="wearcard special"><i class="wsw" style="background:linear-gradient(135deg,#fff3b0,#ffcf40 45%,#c8901a)"></i><b>${esc(L.name)}</b><span class="soft">${L.sold.toLocaleString('en-US')} / ${L.supply.toLocaleString('en-US')} claimed</span>${mine ? `<span class="worn">${icon('check')}Yours: #${mine}</span>` : L.left <= 0 ? '<span class="soft">Sold out</span>' : `<button class="btn gold" data-mgrd="limited:${L.id}" ${shop.enabled ? '' : 'disabled'}>${icon('mgrd')}${L.mgrd ? `${mgrd(L.mgrd)} $MGRD` : 'Soon'}</button>`}</div>`; }).join('')}</div>${shop.enabled ? '' : '<p class="soft">The $MGRD shop opens when the token is live.</p>'}`;
+    } else if (tab === 'community') {
+      let cm = null;
+      try { cm = await api('/api/community'); } catch { cm = null; }
+      if (!cm) body = '<p class="soft">Could not load the community page.</p>';
+      else {
+        const polls = cm.polls.map((pl) => {
+          const tot = pl.options.reduce((n, o) => n + o.weight, 0) || 1;
+          return `<div class="row"><div class="meta"><b>${esc(pl.question)}</b>${pl.options.map((o, i) => `<div class="pollopt"><span>${esc(o.text)}${pl.myVote === i ? ` ${icon('check')}` : ''}</span><div class="pbar"><i style="width:${Math.round((o.weight / tot) * 100)}%"></i></div><em>${o.voters} vote${o.voters === 1 ? '' : 's'}</em>${pl.open && pl.myVote == null ? `<button class="btn blue" data-vote="${pl.id}:${i}">Vote</button>` : ''}</div>`).join('')}<span>${pl.open ? `Closes in ${when(pl.endsAt - Date.now())} · weight by badge: Sprout 1, Bloom 2, Golden Tree 3` : 'Closed'}</span></div></div>`;
+        }).join('') || '<p class="soft">No votes right now. Holders vote on festival themes, new crop looks and the next limited drop.</p>';
+        const potPct = Math.min(100, Math.round((Number(cm.pot.total) / Number(cm.pot.goal)) * 100));
+        body = `${walletRow}<h3>Holder votes</h3><div class="list">${polls}</div>
+          <h3>Fireworks Pot</h3><p>When the village fills the pot (${mgrd(cm.pot.goal)} $MGRD) this week, there are fireworks over the plaza for everyone until Monday. ${cm.pot.reached ? `<b>${icon('check')} Full! Enjoy the show.</b>` : ''}</p><div class="pbar"><i style="width:${potPct}%"></i></div><p class="soft">${mgrd(cm.pot.total)} / ${mgrd(cm.pot.goal)} $MGRD from ${cm.pot.givers} gardener${cm.pot.givers === 1 ? '' : 's'} · half goes to the reward pool, like every $MGRD payment</p>
+          <p>${cm.pot.amounts.map((u, i) => `<button class="btn mgrdpay" data-mgrd="pot:${u}" ${c.shop && r.wallet ? '' : 'disabled'}>${icon('mgrd')}${mgrd(cm.pot.mgrd[i])} $MGRD</button>`).join(' ')}</p>
+          <h3>Name the fountain</h3><p>${cm.plaque ? `The fountain is <b>"${esc(cm.plaque.text)}"</b>, named by ${esc(cm.plaque.by)} until ${new Date(cm.plaque.until).toLocaleDateString()}.` : 'The fountain has no name yet!'} Your name stays up for ${cm.name.days} days for everyone in every village${cm.name.nextFree > Date.now() + 60_000 ? `; the next free week starts ${new Date(cm.name.nextFree).toLocaleDateString()}` : ''}.</p>
+          <p><input id="fname" maxlength="24" placeholder="Fountain name" style="font:700 18px var(--font);padding:6px 10px;border:3px solid var(--bark);border-radius:10px;width:220px"> <button class="btn mgrdpay" id="nameBtn" ${c.shop && r.wallet ? '' : 'disabled'}>${icon('mgrd')}${mgrd(cm.name.mgrd)} $MGRD</button></p>
+          <h3>Public burns</h3><p>${(cm.burns.bps / 100).toFixed(0)}% of $MGRD shop revenue is set aside and burned in public. Burned so far: <b>${mgrd(cm.burns.total)} $MGRD</b> · waiting for the next burn: ${mgrd(cm.burns.pending)} $MGRD.</p><div class="list">${cm.burns.list.map((b) => `<div class="row">${icon('mgrd')}<div class="meta"><b>${mgrd(b.amount)} $MGRD burned</b><span>${new Date(b.at).toLocaleDateString()}${b.note ? ` · ${esc(b.note)}` : ''}</span></div><a class="btn blue" target="_blank" rel="noopener" href="https://explorer.solana.com/tx/${b.signature}?cluster=${c.cluster === 'mainnet-beta' ? 'mainnet-beta' : c.cluster}">View</a></div>`).join('') || '<p class="soft">No burns yet.</p>'}</div>
+          <p class="soft">Tips received: ${mgrd(cm.tips.received)} $MGRD (${cm.tips.count}). Tip or gift other gardeners from the Village list.</p>`;
+      }
+    } else if (tab === 'club') {
+      let h = null;
+      try { h = r.wallet ? await api('/api/holder') : null; } catch { h = null; }
+      const tiers = HOLDER_TIERS.slice().reverse().map((t) => `${tick((h?.balance ?? 0) + (h?.locked ?? 0) >= t.min, `${t.name} (${t.min.toLocaleString('en-US')}+)`)}`).join(' ');
+      const club = h?.club;
+      body = `${walletRow}<p><b>Holder badge:</b> ${h?.tier ? `<span class="hbadge ${h.tier.id}">${esc(h.tier.name)}</span>` : 'none yet'} · wallet ${(h?.balance ?? 0).toLocaleString('en-US')} $MGRD${h?.locked ? ` + ${h.locked.toLocaleString('en-US')} locked` : ''}</p><p>${tiers}</p>
+        <h3>Garden Club</h3><p>Lock at least <b>${(club?.minLock ?? 5000).toLocaleString('en-US')} $MGRD</b> for ${club?.days ?? 30} days. You get the tokens back afterwards (no interest). Members get a club badge, a golden name, the Garden Club Lantern and ${club?.extraDecor ?? 10} more decoration slots.</p>
+        ${club?.active ? `<p>${icon('check')} <b>Member</b> until ${new Date(h.unlockAt).toLocaleDateString()}.</p>` : ''}
+        ${h?.locked && h.unlockAt <= Date.now() ? `<p><button class="btn gold" id="unlockC">Get my ${h.locked.toLocaleString('en-US')} $MGRD back</button></p>` : ''}
+        <p><input id="lockAmt" type="number" min="1" step="1" value="${club?.minLock ?? 5000}" style="font:700 18px var(--font);padding:6px 10px;border:3px solid var(--bark);border-radius:10px;width:140px"> $MGRD for <b>${club?.days ?? 30} days</b> <button class="btn gold" id="lockC" ${c.enabled && r.wallet ? '' : 'disabled'}>${icon('mgrd')}${h?.locked ? 'Add to lock' : 'Join the club'}</button></p>
+        <p class="soft">Locked tokens sit in your own lock account on Solana; only you can take them out, after the date.</p>`;
+    } else {
+      body = `<p><b>Season Points</b> come only from activities where everyone has the same chances: the Daily Challenge, villager orders and contracts, festival co-op harvests and Sky Island discoveries. At most 100 points a day. Coins, gems, purchases and garden size never add points; pets help with festival harvests (same daily caps).</p>
+        <p><b>Every week</b> the pool is shared by points: your share = pool x your points / everyone's points, at most 1% of the pool per player. Small amounts roll over to the next week. Results are checked for 48 hours, then you can claim for 30 days.</p>
+        <p><b>Claiming</b> sends a transaction from your wallet to the reward program, which checks a proof of your fixed amount. Each week can be claimed once. ${tick(c.enabled, c.enabled ? `Live on Solana ${c.cluster}` : 'Not live yet')}</p>
+        <p class="soft">$MGRD has no promised price or income. Rewards are funded per week; a week without funding has game prizes only.</p>`;
+    }
+    hud.modal(`<h2>${icon('mgrd', 'i big')}$MGRD Rewards</h2>${tabs}${body}`, (el) => {
+      el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => open(b.dataset.tab)));
+      el.querySelector('#link')?.addEventListener('click', () => connectFlow());
+      el.querySelector('#unlink')?.addEventListener('click', async () => { await api('/api/wallet/unlink', {}); linked = null; button(); open(tab); });
+      el.querySelectorAll('[data-claim]').forEach((b) => b.addEventListener('click', run(() => claim(r.allocations.find((a) => String(a.epoch) === b.dataset.claim)), tab)));
+      el.querySelectorAll('[data-buy]').forEach((b) => b.addEventListener('click', run(() => buy(b.dataset.buy), tab)));
+      bindTags(el, () => open(tab));
+      el.querySelectorAll('[data-vote]').forEach((b) => b.addEventListener('click', async () => { const [poll, option] = b.dataset.vote.split(':').map(Number); try { const v = await api('/api/vote', { poll, option }); hud.toast(`Voted! Your vote counts ${v.weight}x.`, 'good'); } catch (e) { hud.toast(e.message, 'bad', 5000); } open(tab); }));
+      el.querySelector('#nameBtn')?.addEventListener('click', run(() => pay('name', el.querySelector('#fname').value), tab));
+      el.querySelector('#lockC')?.addEventListener('click', run(() => clubLock(Number(el.querySelector('#lockAmt').value) || 0, 30).then(() => api('/api/holder')), tab));
+      el.querySelector('#unlockC')?.addEventListener('click', run(() => clubUnlock().then(() => api('/api/holder')), tab));
+    });
+  }
+  open.sync = sync;
+  open.connect = connectFlow;
+  open.priceTag = priceTag;
+  open.bindTags = bindTags;
+  open.pay = pay;
+
+  /** Tip another gardener (wallet to wallet; the server checks the transfer on chain and tells the village). */
+  open.tip = async (slot) => {
+    try {
+      await load();
+      if (!linked) { await connectFlow(); if (!linked) return; }
+      const rcp = await api('/api/tip/recipient', { slot });
+      hud.modal(`<h2>${icon('mgrd', 'i big')}Tip ${esc(rcp.name)}</h2><p>Send $MGRD straight to ${esc(rcp.name)}'s wallet (${esc(shortAddr(rcp.wallet))}).</p><p>${rcp.amounts.map((a) => `<button class="btn mgrdpay" data-tip="${a}">${icon('mgrd')}${a} $MGRD</button>`).join(' ')}</p>`, (el) => el.querySelectorAll('[data-tip]').forEach((b) => b.addEventListener('click', async () => {
+        try {
+          hud.toast('Approve the tip in your wallet...', 'info', 8000);
+          const { prog } = lib;
+          const amount = BigInt(Number(b.dataset.tip) * 1e6);
+          const sig = await sendTx(linked, [prog.createAtaIdempotentIx(linked, rcp.wallet, chain.mint), prog.tokenTransferIx({ from: prog.ata(linked, chain.mint), to: prog.ata(rcp.wallet, chain.mint), owner: linked, amount })]);
+          const res = await api('/api/tip/confirm', { signature: sig, slot });
+          hud.modal(null);
+          hud.toast(`You tipped ${esc(rcp.name)} ${res.amount ?? b.dataset.tip} $MGRD!`, 'gold', 4000);
+        } catch (e) { hud.toast(/reject|cancel|denied/i.test(e.message ?? '') ? 'Cancelled in the wallet.' : e.message, 'bad', 6000); }
+      })));
+    } catch (e) { hud.toast(e.message ?? String(e), 'bad', 5000); }
+  };
+  /** Gift an outfit to another gardener (paid with $MGRD, granted to them). */
+  open.gift = async (slot, name) => {
+    await load();
+    if (!chain?.shop) return hud.toast('Gifts open when the $MGRD shop is live.', 'info');
+    const items = (await api('/api/shop')).items;
+    hud.modal(`<h2>${icon('gift', 'i big')}Gift ${esc(name)}</h2><p class="soft">Pick an outfit. ${esc(name)} gets it straight away.</p><div class="wear">${items.map((it) => `<div class="wearcard special"><i class="wsw" style="background:${it.color}"></i><b>${esc(it.name)}</b><button class="btn mgrdpay" data-g="${it.id}">${icon('mgrd')}${it.mgrd ? `${mgrd(it.mgrd)} $MGRD` : 'Soon'}</button></div>`).join('')}</div>`, (el) => el.querySelectorAll('[data-g]').forEach((b) => b.addEventListener('click', async () => {
+      try { hud.toast('Approve the payment in your wallet...', 'info', 8000); await pay('gift', b.dataset.g, { to: slot }); hud.modal(null); } catch (e) { hud.toast(/reject|cancel|denied/i.test(e.message ?? '') ? 'Cancelled in the wallet.' : e.message, 'bad', 6000); }
+    })));
+  };
+  return open;
+}

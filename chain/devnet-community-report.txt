@@ -1,0 +1,16 @@
+Devnet community test 2026-11-11T14:45:42.859Z
+
+- two gardeners in the same village, wallets linked; alice holds 20,000 $MGRD, bob none
+- pet eggs and decorations are $MGRD-only: buying with coins is refused; a Common Egg for 500 $MGRD works
+    tx: https://explorer.solana.com/tx/5quTtmgkLZ75AcrqkfV9CK8PbpnTSDfRji1symLYZWntX9HvKJ9DAkZpvjHmcKtNqM9rnQhVbRZgtkCAuFv1JDYB?cluster=devnet
+- tip: alice sent bob 50 $MGRD wallet to wallet; the server checked it on chain, told bob and the village, and counts it once
+    tx: https://explorer.solana.com/tx/2U5fSR6qSN4eCeVPeH8h5YDuEFVxEhmEBqB7wEfopj4HfWjx6JkmEhS2P6Q29Bkko6CSGdCLtDbQLiy57tBE6YmN?cluster=devnet
+- gift: alice bought the Aurora Shirt for bob (3000 $MGRD); it went into bob's wardrobe
+    tx: https://explorer.solana.com/tx/2Lju9p4ARpnJDNrUMprY8MXn996pnSHRyrzHXUWVfZEedug5EaJErY9mBFRfUTNvdFGwQKmt7JdJ8Xqdr9z3yycz?cluster=devnet
+- Fireworks Pot: alice put in 1000 $MGRD; the pot is full, so the plaza shows fireworks for everyone
+    tx: https://explorer.solana.com/tx/45KSLteuYAKFtMgLK8W78TwLhtEjebyZcZgB4uJGecH6stqEsZ9uMwqYVMrUYp9tAFaPYy3te6FFia9SF8Rpoweo?cluster=devnet
+- naming: alice named the fountain "Alice Springs" for 7 days (5000 $MGRD); everyone sees the plaque
+    tx: https://explorer.solana.com/tx/2T4faF4pyL8dXuYRYPgdSmkkWqWvDCZ6bBDKFn3h6cqPqPthizVfPnCxCn5QmsfEAQm6xb6gBUgMidMAdtxZNQC?cluster=devnet
+- holder vote: alice (badge weight 2) voted "Candy Week"; a second vote and a vote below the Sprout badge were refused
+- public burn: 100 $MGRD burned from the treasury (total supply now 999,999,600); the game lists it with its transaction; of the 1900 $MGRD set aside (20% of shop revenue), 1800 still waits for the next burn
+    tx: https://explorer.solana.com/tx/qTfiQ5Ry1EfTaTFBzroNYvv5Fd3XewPzzLww8TzLk7rqEb5RdtrAsjCagFUEwRKBnVaUoyNbRfmaXp35DXMkemf?cluster=devnet

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#B3181B" />
+  <title>Mihao Meme Garden</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
+</head>
+<body>
+  <div id="world"></div>
+  <div id="labels" aria-hidden="true"></div>
+
+  <div id="hud" hidden>
+    <header class="top">
+      <nav class="tabs" aria-label="Travel">
+        <button class="tab tab-seeds" data-travel="seeds"><svg class="i"><use href="/icons/sprite.svg#seeds"/></svg><span>Seeds</span></button>
+        <button class="tab tab-garden" data-travel="garden"><svg class="i"><use href="/icons/sprite.svg#garden"/></svg><span>Garden</span></button>
+        <button class="tab tab-sell" data-travel="market"><svg class="i"><use href="/icons/sprite.svg#sell"/></svg><span>Sell</span></button>
+        <button class="tab tab-gadgets" data-travel="gadgets"><svg class="i"><use href="/icons/sprite.svg#shop"/></svg><span>Gadgets</span></button>
+        <button class="tab tab-pets" data-travel="pets"><svg class="i"><use href="/icons/sprite.svg#paw"/></svg><span>Pets</span></button>
+      </nav>
+      <div class="wallet">
+        <div class="pill" title="Garden Coins"><svg class="i"><use href="/icons/sprite.svg#coin"/></svg><b id="coins">0</b></div>
+        <div class="pill" title="Gems"><svg class="i"><use href="/icons/sprite.svg#gem"/></svg><b id="gems">0</b></div>
+        <button class="pill walletbtn" id="walletBtn"><svg class="i"><use href="/icons/sprite.svg#key"/></svg><b>Connect Wallet</b></button>
+        <button class="pill conn" id="conn" title="Connection"><svg class="i"><use href="/icons/sprite.svg#connecting"/></svg></button>
+        <button class="round" id="settingsBtn" aria-label="Settings"><svg class="i"><use href="/icons/sprite.svg#settings"/></svg></button>
+      </div>
+    </header>
+
+    <aside class="left">
+      <div class="weather" id="weather" title="Weather">
+        <svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" class="track"/><circle cx="22" cy="22" r="19" class="fill" id="weatherRing"/></svg>
+        <svg class="i big"><use id="weatherIcon" href="/icons/sprite.svg#sunny"/></svg>
+        <div class="wtext"><b id="weatherName">Sunny</b><span id="weatherTime">0:00</span></div>
+      </div>
+      <section class="goals" id="goals">
+        <h2><svg class="i"><use href="/icons/sprite.svg#quests"/></svg>Goals</h2>
+        <ol id="goalList"></ol>
+      </section>
+      <nav class="rail" aria-label="Menu">
+        <button class="railbtn" id="memeBtn" title="Mihao Cam (G)"><svg class="i"><use href="/icons/sprite.svg#camera"/></svg><span>Cam</span></button>
+        <button class="railbtn" data-panel="gift"><svg class="i"><use href="/icons/sprite.svg#gift"/></svg><span>Gift</span><em class="badge" id="giftBadge" hidden>!</em></button>
+        <button class="railbtn" data-panel="quests"><svg class="i"><use href="/icons/sprite.svg#quests"/></svg><span>Quests</span><em class="badge" id="questBadge" hidden>0</em></button>
+        <button class="railbtn" data-panel="basket"><svg class="i"><use href="/icons/sprite.svg#basket"/></svg><span>Basket</span><em class="badge" id="basketBadge" hidden>0</em></button>
+        <button class="railbtn" data-panel="room"><svg class="i"><use href="/icons/sprite.svg#room"/></svg><span>Village</span></button>
+        <button class="railbtn" data-panel="more"><svg class="i"><use href="/icons/sprite.svg#more"/></svg><span>Menu</span><em class="badge" id="moreBadge" hidden>!</em></button>
+      </nav>
+    </aside>
+
+    <aside class="right">
+      <canvas id="minimap" width="190" height="190" aria-label="Village map"></canvas>
+      <button class="festbanner" id="festBanner" hidden><svg class="i"><use href="/icons/sprite.svg#festival"/></svg><b>Festival</b></button>
+      <div class="restock" id="restock"><svg class="i"><use href="/icons/sprite.svg#timer"/></svg>Restock <b id="restockTime">0:00</b></div>
+    </aside>
+
+    <div class="prompt" id="prompt" hidden><kbd>E</kbd><div><b id="promptTitle"></b><span id="promptSub"></span></div></div>
+
+    <footer class="bottom">
+      <div class="hotbar" id="hotbar"></div>
+    </footer>
+
+    <section class="chat" id="chat">
+      <ol id="chatLog"></ol>
+      <form id="chatForm" autocomplete="off"><svg class="i"><use href="/icons/sprite.svg#chat"/></svg><input id="chatInput" maxlength="140" placeholder="Press Enter to chat" /></form>
+    </section>
+
+    <div class="toast" id="toast" hidden></div>
+    <div class="dialogue" id="dialogue" hidden></div>
+    <div class="pointer" id="pointer" hidden><svg class="i big"><use href="/icons/sprite.svg#pointer"/></svg><span id="pointerText"></span></div>
+    <div class="joystick" id="joystick" hidden><div class="knob"></div></div>
+    <div class="touchbtns" id="touchbtns" hidden><button id="touchE" class="tb">E</button><button id="touchJump" class="tb">Jump</button></div>
+  </div>
+
+  <div id="memebar" hidden></div>
+  <div id="duelcard" hidden></div>
+  <button id="cleanExit" hidden>Show interface (H)</button>
+  <button id="replayBtn" title="Keep the last few seconds (L)" hidden>Save last moment (L)</button>
+
+  <div class="modal" id="modal" hidden><div class="card" id="modalCard"></div></div>
+
+  <div id="loading">
+    <div class="ld-rays" aria-hidden="true"></div>
+    <div class="ld-seal" aria-hidden="true">米<br>好</div>
+    <div class="ld-ground"></div>
+    <div class="ld-center">
+      <span class="ld-eyebrow">small cat. big harvest.</span>
+      <img class="ld-logo" src="/logo.svg" alt="Mihao Meme Garden" width="520" height="204" />
+      <div class="ld-scene" aria-hidden="true">
+        <div class="ld-bubble b1">any last words?</div>
+        <div class="ld-bubble b2">mihao</div>
+        <div class="ld-halo"></div>
+        <span class="ld-coin coin-one">米</span><span class="ld-coin coin-two">好</span>
+        <img class="ld-cat" src="/icons/mihao.png" alt="" width="233" height="300" fetchpriority="high" />
+        <span class="ld-caption">KEEP CALM &amp; MIHAO</span>
+      </div>
+      <div class="bar"><i id="loadBar"></i><span id="loadPct">0%</span></div>
+      <p id="loadText" role="status">mihao is loading...</p>
+      <p class="ld-tip" id="loadTip">Tip: crops picked at Peak ripeness sell for 30% more.</p>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

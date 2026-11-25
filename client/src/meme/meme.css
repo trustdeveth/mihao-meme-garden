@@ -1,0 +1,37 @@
+/* Mihao Cam bar, contest card, clean view and the mihao stamp. */
+#memebar { position: fixed; right: 12px; top: 84px; bottom: auto; z-index: 6; width: 300px; max-width: calc(100vw - 24px); max-height: calc(100vh - 100px); overflow: auto; background: var(--parchment); border: 3px solid var(--bark); border-radius: 6px; box-shadow: var(--shadow); padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+#memebar[hidden], #duelcard[hidden], #cleanExit[hidden], #replayBtn[hidden] { display: none; }
+#replayBtn { position: fixed; right: 12px; bottom: 14px; z-index: 5; min-height: 44px; padding: 4px 14px; background: var(--lacquer); color: #fff; border: 3px solid var(--bark); border-radius: 4px; box-shadow: var(--shadow); font-size: 16px; font-weight: 800; }
+body.clean #replayBtn { display: none; }
+.mmhead { display: flex; align-items: center; gap: 8px; }
+.mmhead b { font-family: Impact, 'Arial Black', var(--font); font-weight: 400; font-size: 20px; text-transform: uppercase; }
+.mmhead span { margin-left: auto; font-size: 14px; font-weight: 800; }
+.mmhead i { font-style: normal; color: var(--lacquer); }
+.mmx { background: none; border: 0; padding: 0; }
+.mmgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.mmbtn { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 32px; line-height: 1.1; padding: 2px 6px; background: #FFFAEE; border: 3px solid var(--bark); border-radius: 4px; font-size: 14px; font-weight: 800; }
+.mmbtn .i { width: 18px; height: 18px; }
+.mmbtn em { font-style: normal; color: var(--lacquer); }
+.mmbtn.on { background: var(--sun); }
+.mmbtn.locked { background: #F1DFB8; }
+.mmbtn.act { background: var(--lacquer); color: #fff; }
+.mmbtn.rec { background: var(--night); color: var(--gold); }
+.mmlines { display: flex; flex-wrap: wrap; gap: 4px; }
+.mmline { background: #fff; color: #393B3D; border: 2px solid var(--bark); border-radius: 4px; padding: 0 6px; min-height: 26px; font-size: 14px; font-weight: 600; }
+.mmauto { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 800; }
+.mmrow { display: flex; gap: 8px; flex-wrap: wrap; }
+.mmentry { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.mmentry input { min-height: 40px; padding: 4px 10px; font: 600 16px var(--font); color: var(--ink); background: #fff; border: 3px solid var(--bark); border-radius: 4px; }
+.mmentry .btn { align-self: flex-start; }
+.mmrow a.btn { text-decoration: none; }
+.clipview { width: 100%; max-height: 50vh; background: #000; border: 3px solid var(--bark); }
+#duelcard { position: fixed; left: 50%; top: 150px; transform: translateX(-50%); z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 260px; max-width: calc(100vw - 24px); padding: 10px 16px; background: var(--parchment); border: 3px solid var(--bark); border-radius: 6px; box-shadow: var(--shadow); font-size: 17px; text-align: center; }
+#cleanExit { position: fixed; right: 8px; top: 8px; z-index: 8; min-height: 34px; padding: 2px 12px; background: rgba(23, 18, 15, .55); color: #fff; border: 2px solid #fff; border-radius: 4px; font-size: 14px; font-weight: 800; opacity: .55; }
+#cleanExit:hover, #cleanExit:focus-visible { opacity: 1; }
+body.clean #hud, body.clean #memebar, body.clean #labels > :not(.bubble):not(.stamp) { display: none !important; }
+.stamp { position: absolute; z-index: 2500; transform: translate(-50%, -100%); transform-origin: 50% 100%; white-space: nowrap; padding: 3px 14px; background: var(--lacquer); color: #fff; border: 3px solid #fff; outline: 3px solid var(--lacquer); font-family: Impact, 'Arial Black', var(--font); font-size: 24px; letter-spacing: .08em; }
+.seal { padding: 2px 8px; background: var(--lacquer); color: #fff; font-family: Impact, 'Arial Black', var(--font); font-size: 16px; letter-spacing: .06em; }
+@media (max-width: 760px) {
+  #memebar { top: auto; bottom: 96px; left: 12px; right: 12px; width: auto; max-height: 46vh; }
+  .mmgrid { grid-template-columns: 1fr 1fr 1fr; }
+}

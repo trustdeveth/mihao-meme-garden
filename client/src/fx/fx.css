@@ -1,0 +1,46 @@
+/* Effect layer: sits above popups, never takes clicks. */
+#fxlayer { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+#fxlayer > * { position: fixed; pointer-events: none; will-change: transform, opacity; }
+.fx-ripple { width: 52px; height: 52px; border: 4px solid #FFD84A; border-radius: 6px; box-shadow: 0 0 0 3px #2B1A0E; }
+.fx-fly { width: 38px; height: 38px; display: grid; place-items: center; filter: drop-shadow(2px 3px 0 rgba(23, 18, 15, .4)); }
+.fx-fly .i { width: 38px; height: 38px; }
+.fx-fly .crop { width: 48px; height: 48px; background-repeat: no-repeat; }
+.fx-confetti { width: 11px; height: 15px; border: 2px solid #2B1A0E; }
+.fx-delta { padding: 1px 10px; border: 3px solid #2B1A0E; border-radius: 6px; font: 400 22px Impact, 'Arial Black', var(--font); letter-spacing: .04em; color: #fff; text-shadow: 2px 2px 0 #2B1A0E; white-space: nowrap; }
+.fx-delta.up { background: #2FB463; }
+.fx-delta.down { background: #D93A3A; }
+.fx-banner { display: grid; justify-items: center; gap: 4px; padding: 14px 34px 16px; background: #B3181B; border: 5px solid #E8B53A; border-radius: 6px; box-shadow: 0 0 0 4px #17120F, 10px 12px 0 4px rgba(23, 18, 15, .35); text-align: center; max-width: calc(100vw - 32px); }
+.fx-banner i { position: absolute; inset: -140px; z-index: -1; background: repeating-conic-gradient(rgba(255, 216, 74, .55) 0 9deg, transparent 9deg 22deg); border-radius: 50%; -webkit-mask: radial-gradient(circle, #000 20%, transparent 68%); mask: radial-gradient(circle, #000 20%, transparent 68%); animation: fxspin 6s linear infinite; }
+.fx-banner b { font: 400 52px/1.05 Impact, 'Arial Black', var(--font); letter-spacing: .05em; text-transform: uppercase; color: #fff; text-shadow: 4px 4px 0 #17120F, -2px -2px 0 #17120F, 2px -2px 0 #17120F, -2px 2px 0 #17120F; }
+.fx-banner span { font-size: 18px; font-weight: 800; color: #FFE9A8; text-shadow: 2px 2px 0 #17120F; }
+.fx-banner span:empty { display: none; }
+@keyframes fxspin { to { rotate: 360deg; } }
+#fxlayer > .card.fx-ghost { position: fixed; margin: 0; max-height: none; overflow: hidden; }
+
+/* ---- always-on life in the interface ---- */
+.badge:not([hidden]) { animation: fxbadge 1.8s ease-in-out infinite; }
+@keyframes fxbadge { 0%, 70%, 100% { scale: 1; rotate: 0deg; } 76% { scale: 1.3; rotate: -10deg; } 84% { scale: .95; rotate: 9deg; } 92% { scale: 1.12; rotate: -4deg; } }
+.prompt kbd { animation: fxkey 1.1s steps(2) infinite; }
+@keyframes fxkey { 50% { translate: 0 3px; box-shadow: 0 0 0 var(--bark); } }
+.slot.on .i, .slot.on .crop { animation: fxheld 1.2s ease-in-out infinite; }
+@keyframes fxheld { 50% { translate: 0 -4px; rotate: -6deg; } }
+.pbar i { transition: width .6s cubic-bezier(.3, 1.6, .5, 1); position: relative; overflow: hidden; }
+.pbar i::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .65) 50%, transparent 70%); translate: -100% 0; animation: fxshine 2.4s ease-in-out infinite; }
+@keyframes fxshine { 55%, 100% { translate: 100% 0; } }
+.btn.gold:not(:disabled) { position: relative; overflow: hidden; }
+.btn.gold:not(:disabled)::after { content: ''; position: absolute; top: 0; bottom: 0; width: 34%; left: 0; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .6), transparent); translate: -140% 0; animation: fxsweep 2.8s ease-in-out infinite; pointer-events: none; }
+@keyframes fxsweep { 45%, 100% { translate: 420% 0; } }
+
+@media (max-width: 760px) { .fx-banner b { font-size: 34px; } .fx-banner span { font-size: 15px; } }
+@media (prefers-reduced-motion: reduce) { #fxlayer { display: none; } }
+
+/* ---- weather: a soft colour wash around the edges of the world (never over the interface) ---- */
+#weatherveil { position: fixed; inset: 0; pointer-events: none; transition: box-shadow 2.5s ease, background-color 2.5s ease; }
+#weatherveil.w-sunny { box-shadow: inset 0 0 130px rgba(255, 226, 120, .22); }
+#weatherveil.w-rain { box-shadow: inset 0 0 180px rgba(40, 80, 130, .45); }
+#weatherveil.w-storm { box-shadow: inset 0 0 240px rgba(8, 10, 30, .72); }
+#weatherveil.w-frosty { box-shadow: inset 0 0 90px 14px rgba(232, 248, 255, .72); }
+#weatherveil.w-heatwave { box-shadow: inset 0 0 220px rgba(255, 120, 20, .48); }
+#weatherveil.w-night { box-shadow: inset 0 0 200px rgba(6, 8, 40, .6); }
+#weatherveil.w-stars { box-shadow: inset 0 0 200px rgba(70, 20, 110, .55); }
+

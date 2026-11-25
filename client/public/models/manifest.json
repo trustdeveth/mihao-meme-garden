@@ -1,0 +1,974 @@
+{
+  "version": 1,
+  "crops": {
+    "carrot": {
+      "file": "models/crops/carrot.glb",
+      "bytes": 292968,
+      "lod0": [
+        92,
+        148,
+        1372,
+        1692,
+        2012
+      ],
+      "lod1": [
+        92,
+        140,
+        412,
+        492,
+        572
+      ],
+      "fruit": 156,
+      "anchors": 0
+    },
+    "strawberry": {
+      "file": "models/crops/strawberry.glb",
+      "bytes": 225532,
+      "lod0": [
+        92,
+        148,
+        688,
+        1256,
+        1120
+      ],
+      "lod1": [
+        92,
+        140,
+        352,
+        804,
+        584
+      ],
+      "fruit": 160,
+      "anchors": 4
+    },
+    "tomato": {
+      "file": "models/crops/tomato.glb",
+      "bytes": 315556,
+      "lod0": [
+        92,
+        148,
+        1308,
+        1820,
+        1696
+      ],
+      "lod1": [
+        92,
+        140,
+        644,
+        1024,
+        892
+      ],
+      "fruit": 160,
+      "anchors": 3
+    },
+    "mango": {
+      "file": "models/crops/mango.glb",
+      "bytes": 294228,
+      "lod0": [
+        92,
+        148,
+        2000,
+        2412,
+        2412
+      ],
+      "lod1": [
+        92,
+        140,
+        652,
+        652,
+        872
+      ],
+      "fruit": 44,
+      "anchors": 3
+    },
+    "blueberry": {
+      "file": "models/crops/blueberry.glb",
+      "bytes": 237416,
+      "lod0": [
+        92,
+        148,
+        980,
+        1304,
+        1592
+      ],
+      "lod1": [
+        92,
+        140,
+        328,
+        452,
+        624
+      ],
+      "fruit": 12,
+      "anchors": 7
+    },
+    "cherryblossom": {
+      "file": "models/crops/cherryblossom.glb",
+      "bytes": 244728,
+      "lod0": [
+        92,
+        148,
+        1184,
+        1632,
+        2112
+      ],
+      "lod1": [
+        92,
+        140,
+        468,
+        564,
+        848
+      ],
+      "fruit": 32,
+      "anchors": 4
+    },
+    "bamboo": {
+      "file": "models/crops/bamboo.glb",
+      "bytes": 228740,
+      "lod0": [
+        92,
+        148,
+        1376,
+        1952,
+        2624
+      ],
+      "lod1": [
+        92,
+        140,
+        444,
+        928,
+        1248
+      ],
+      "fruit": 64,
+      "anchors": 1
+    },
+    "eggplant": {
+      "file": "models/crops/eggplant.glb",
+      "bytes": 234904,
+      "lod0": [
+        92,
+        148,
+        848,
+        1264,
+        1092
+      ],
+      "lod1": [
+        92,
+        140,
+        376,
+        708,
+        528
+      ],
+      "fruit": 176,
+      "anchors": 2
+    },
+    "pepper": {
+      "file": "models/crops/pepper.glb",
+      "bytes": 228716,
+      "lod0": [
+        92,
+        148,
+        848,
+        1264,
+        1092
+      ],
+      "lod1": [
+        92,
+        140,
+        376,
+        708,
+        528
+      ],
+      "fruit": 160,
+      "anchors": 3
+    },
+    "pumpkin": {
+      "file": "models/crops/pumpkin.glb",
+      "bytes": 325404,
+      "lod0": [
+        92,
+        148,
+        1328,
+        1932,
+        2080
+      ],
+      "lod1": [
+        92,
+        140,
+        464,
+        608,
+        764
+      ],
+      "fruit": 96,
+      "anchors": 1
+    },
+    "cauliflower": {
+      "file": "models/crops/cauliflower.glb",
+      "bytes": 75208,
+      "lod0": [
+        92,
+        148,
+        200,
+        224,
+        248
+      ],
+      "lod1": [
+        92,
+        140,
+        140,
+        152,
+        164
+      ],
+      "fruit": 12,
+      "anchors": 1
+    },
+    "beanstalk": {
+      "file": "models/crops/beanstalk.glb",
+      "bytes": 240856,
+      "lod0": [
+        92,
+        148,
+        1116,
+        1320,
+        1456
+      ],
+      "lod1": [
+        92,
+        140,
+        560,
+        680,
+        740
+      ],
+      "fruit": 40,
+      "anchors": 4
+    },
+    "cacao": {
+      "file": "models/crops/cacao.glb",
+      "bytes": 296264,
+      "lod0": [
+        92,
+        148,
+        2000,
+        2412,
+        2412
+      ],
+      "lod1": [
+        92,
+        140,
+        652,
+        652,
+        872
+      ],
+      "fruit": 80,
+      "anchors": 3
+    },
+    "cactus": {
+      "file": "models/crops/cactus.glb",
+      "bytes": 65620,
+      "lod0": [
+        92,
+        148,
+        176,
+        368,
+        272
+      ],
+      "lod1": [
+        92,
+        140,
+        116,
+        152,
+        164
+      ],
+      "fruit": 12,
+      "anchors": 2
+    },
+    "watermelon": {
+      "file": "models/crops/watermelon.glb",
+      "bytes": 323920,
+      "lod0": [
+        92,
+        148,
+        1328,
+        1932,
+        2080
+      ],
+      "lod1": [
+        92,
+        140,
+        464,
+        608,
+        764
+      ],
+      "fruit": 80,
+      "anchors": 1
+    },
+    "coconut": {
+      "file": "models/crops/coconut.glb",
+      "bytes": 336060,
+      "lod0": [
+        92,
+        148,
+        2064,
+        2256,
+        2448
+      ],
+      "lod1": [
+        92,
+        140,
+        1056,
+        1168,
+        1280
+      ],
+      "fruit": 12,
+      "anchors": 2
+    },
+    "nectarine": {
+      "file": "models/crops/nectarine.glb",
+      "bytes": 299096,
+      "lod0": [
+        92,
+        148,
+        2000,
+        2412,
+        2412
+      ],
+      "lod1": [
+        92,
+        140,
+        652,
+        652,
+        872
+      ],
+      "fruit": 112,
+      "anchors": 3
+    },
+    "pear": {
+      "file": "models/crops/pear.glb",
+      "bytes": 297156,
+      "lod0": [
+        92,
+        148,
+        2000,
+        2412,
+        2412
+      ],
+      "lod1": [
+        92,
+        140,
+        652,
+        652,
+        872
+      ],
+      "fruit": 128,
+      "anchors": 3
+    },
+    "avocado": {
+      "file": "models/crops/avocado.glb",
+      "bytes": 295576,
+      "lod0": [
+        92,
+        148,
+        2000,
+        2412,
+        2412
+      ],
+      "lod1": [
+        92,
+        140,
+        652,
+        652,
+        872
+      ],
+      "fruit": 100,
+      "anchors": 2
+    },
+    "banana": {
+      "file": "models/crops/banana.glb",
+      "bytes": 116132,
+      "lod0": [
+        92,
+        148,
+        436,
+        472,
+        604
+      ],
+      "lod1": [
+        92,
+        140,
+        216,
+        244,
+        360
+      ],
+      "fruit": 48,
+      "anchors": 4
+    },
+    "dragonfruit": {
+      "file": "models/crops/dragonfruit.glb",
+      "bytes": 121356,
+      "lod0": [
+        92,
+        148,
+        364,
+        444,
+        484
+      ],
+      "lod1": [
+        92,
+        140,
+        244,
+        284,
+        324
+      ],
+      "fruit": 80,
+      "anchors": 2
+    },
+    "pinklily": {
+      "file": "models/crops/pinklily.glb",
+      "bytes": 129356,
+      "lod0": [
+        92,
+        148,
+        392,
+        464,
+        464
+      ],
+      "lod1": [
+        92,
+        140,
+        256,
+        304,
+        304
+      ],
+      "fruit": 288,
+      "anchors": 2
+    },
+    "pineapple": {
+      "file": "models/crops/pineapple.glb",
+      "bytes": 89592,
+      "lod0": [
+        92,
+        148,
+        260,
+        308,
+        344
+      ],
+      "lod1": [
+        92,
+        140,
+        176,
+        200,
+        212
+      ],
+      "fruit": 224,
+      "anchors": 1
+    },
+    "kiwi": {
+      "file": "models/crops/kiwi.glb",
+      "bytes": 122956,
+      "lod0": [
+        92,
+        148,
+        244,
+        788,
+        788
+      ],
+      "lod1": [
+        92,
+        140,
+        196,
+        556,
+        556
+      ],
+      "fruit": 12,
+      "anchors": 4
+    },
+    "candyblossom": {
+      "file": "models/crops/candyblossom.glb",
+      "bytes": 256140,
+      "lod0": [
+        92,
+        148,
+        1184,
+        1632,
+        2112
+      ],
+      "lod1": [
+        92,
+        140,
+        468,
+        564,
+        848
+      ],
+      "fruit": 360,
+      "anchors": 3
+    },
+    "sugarapple": {
+      "file": "models/crops/sugarapple.glb",
+      "bytes": 294692,
+      "lod0": [
+        92,
+        148,
+        2000,
+        2412,
+        2412
+      ],
+      "lod1": [
+        92,
+        140,
+        652,
+        652,
+        872
+      ],
+      "fruit": 12,
+      "anchors": 2
+    },
+    "moonblossom": {
+      "file": "models/crops/moonblossom.glb",
+      "bytes": 251184,
+      "lod0": [
+        92,
+        148,
+        1184,
+        1632,
+        2112
+      ],
+      "lod1": [
+        92,
+        140,
+        468,
+        564,
+        848
+      ],
+      "fruit": 216,
+      "anchors": 3
+    },
+    "orchid": {
+      "file": "models/crops/orchid.glb",
+      "bytes": 65356,
+      "lod0": [
+        92,
+        148,
+        96,
+        140,
+        152
+      ],
+      "lod1": [
+        92,
+        140,
+        72,
+        108,
+        108
+      ],
+      "fruit": 84,
+      "anchors": 1
+    },
+    "starflower": {
+      "file": "models/crops/starflower.glb",
+      "bytes": 155612,
+      "lod0": [
+        92,
+        148,
+        548,
+        656,
+        656
+      ],
+      "lod1": [
+        92,
+        140,
+        344,
+        416,
+        416
+      ],
+      "fruit": 72,
+      "anchors": 3
+    }
+  },
+  "characters": {
+    "tinkerer": {
+      "file": "models/characters/tinkerer.glb",
+      "bytes": 193944,
+      "tris": 3072,
+      "animations": [
+        "idle",
+        "walk",
+        "run",
+        "jump",
+        "plant",
+        "water",
+        "harvest",
+        "wave",
+        "stance",
+        "point",
+        "sit",
+        "shock",
+        "flex",
+        "dance",
+        "talk"
+      ]
+    },
+    "mole": {
+      "file": "models/characters/mole.glb",
+      "bytes": 212496,
+      "tris": 4106,
+      "animations": [
+        "idle",
+        "walk",
+        "run",
+        "jump",
+        "plant",
+        "water",
+        "harvest",
+        "wave",
+        "stance",
+        "point",
+        "sit",
+        "shock",
+        "flex",
+        "dance",
+        "talk"
+      ]
+    },
+    "goat": {
+      "file": "models/characters/goat.glb",
+      "bytes": 212496,
+      "tris": 4106,
+      "animations": [
+        "idle",
+        "walk",
+        "run",
+        "jump",
+        "plant",
+        "water",
+        "harvest",
+        "wave",
+        "stance",
+        "point",
+        "sit",
+        "shock",
+        "flex",
+        "dance",
+        "talk"
+      ]
+    },
+    "pet_dog": {
+      "file": "models/characters/pet_dog.glb",
+      "bytes": 45280,
+      "tris": 960,
+      "animations": [
+        "idle",
+        "walk",
+        "help",
+        "sleep"
+      ]
+    },
+    "pet_bunny": {
+      "file": "models/characters/pet_bunny.glb",
+      "bytes": 41104,
+      "tris": 708,
+      "animations": [
+        "idle",
+        "walk",
+        "help",
+        "sleep"
+      ]
+    },
+    "pet_capybara": {
+      "file": "models/characters/pet_capybara.glb",
+      "bytes": 40728,
+      "tris": 792,
+      "animations": [
+        "idle",
+        "walk",
+        "help",
+        "sleep"
+      ]
+    },
+    "pet_bee": {
+      "file": "models/characters/pet_bee.glb",
+      "bytes": 35448,
+      "tris": 456,
+      "animations": [
+        "idle",
+        "walk",
+        "help",
+        "sleep"
+      ]
+    },
+    "pet_turtle": {
+      "file": "models/characters/pet_turtle.glb",
+      "bytes": 39688,
+      "tris": 648,
+      "animations": [
+        "idle",
+        "walk",
+        "help",
+        "sleep"
+      ]
+    },
+    "petkeeper": {
+      "file": "models/characters/petkeeper.glb",
+      "bytes": 199036,
+      "tris": 3670,
+      "animations": [
+        "idle",
+        "walk",
+        "run",
+        "jump",
+        "plant",
+        "water",
+        "harvest",
+        "wave",
+        "stance",
+        "point",
+        "sit",
+        "shock",
+        "flex",
+        "dance",
+        "talk"
+      ]
+    },
+    "farmer": {
+      "file": "models/characters/farmer.glb",
+      "bytes": 1178848,
+      "tris": 50668,
+      "animations": [
+        "idle",
+        "walk",
+        "run",
+        "jump",
+        "plant",
+        "water",
+        "harvest",
+        "wave",
+        "stance",
+        "point",
+        "sit",
+        "shock",
+        "flex",
+        "dance",
+        "talk"
+      ]
+    }
+  },
+  "props": {
+    "stall_seeds": {
+      "file": "models/props/stall_seeds.glb",
+      "bytes": 34224,
+      "tris": 1284
+    },
+    "stall_market": {
+      "file": "models/props/stall_market.glb",
+      "bytes": 33788,
+      "tris": 1284
+    },
+    "stall_gadgets": {
+      "file": "models/props/stall_gadgets.glb",
+      "bytes": 34216,
+      "tris": 1284
+    },
+    "tree_oak": {
+      "file": "models/props/tree_oak.glb",
+      "bytes": 45684,
+      "tris": 1584
+    },
+    "tree_round": {
+      "file": "models/props/tree_round.glb",
+      "bytes": 45900,
+      "tris": 1584
+    },
+    "tree_birch": {
+      "file": "models/props/tree_birch.glb",
+      "bytes": 45816,
+      "tris": 1584
+    },
+    "tree_pine": {
+      "file": "models/props/tree_pine.glb",
+      "bytes": 20148,
+      "tris": 368
+    },
+    "bush": {
+      "file": "models/props/bush.glb",
+      "bytes": 9572,
+      "tris": 252
+    },
+    "fence": {
+      "file": "models/props/fence.glb",
+      "bytes": 20844,
+      "tris": 684
+    },
+    "rock0": {
+      "file": "models/props/rock0.glb",
+      "bytes": 2664,
+      "tris": 12
+    },
+    "rock1": {
+      "file": "models/props/rock1.glb",
+      "bytes": 2672,
+      "tris": 12
+    },
+    "rock2": {
+      "file": "models/props/rock2.glb",
+      "bytes": 2648,
+      "tris": 12
+    },
+    "flowers": {
+      "file": "models/props/flowers.glb",
+      "bytes": 64112,
+      "tris": 1792
+    },
+    "fountain": {
+      "file": "models/props/fountain.glb",
+      "bytes": 38472,
+      "tris": 1200
+    },
+    "sign": {
+      "file": "models/props/sign.glb",
+      "bytes": 6220,
+      "tris": 152
+    },
+    "lamp": {
+      "file": "models/props/lamp.glb",
+      "bytes": 13740,
+      "tris": 336
+    },
+    "bench": {
+      "file": "models/props/bench.glb",
+      "bytes": 17756,
+      "tris": 540
+    },
+    "crate": {
+      "file": "models/props/crate.glb",
+      "bytes": 7136,
+      "tris": 180
+    },
+    "home_shed": {
+      "file": "models/props/home_shed.glb",
+      "bytes": 14640,
+      "tris": 344
+    },
+    "home_cottage": {
+      "file": "models/props/home_cottage.glb",
+      "bytes": 20476,
+      "tris": 440
+    },
+    "home_treehouse": {
+      "file": "models/props/home_treehouse.glb",
+      "bytes": 26952,
+      "tris": 720
+    },
+    "home_windmill": {
+      "file": "models/props/home_windmill.glb",
+      "bytes": 16696,
+      "tris": 312
+    },
+    "home_castle": {
+      "file": "models/props/home_castle.glb",
+      "bytes": 30580,
+      "tris": 784
+    },
+    "gnome": {
+      "file": "models/props/gnome.glb",
+      "bytes": 5012,
+      "tris": 112
+    },
+    "goldgnome": {
+      "file": "models/props/goldgnome.glb",
+      "bytes": 4960,
+      "tris": 112
+    },
+    "birdbath": {
+      "file": "models/props/birdbath.glb",
+      "bytes": 7904,
+      "tris": 192
+    },
+    "scarecrow": {
+      "file": "models/props/scarecrow.glb",
+      "bytes": 10304,
+      "tris": 204
+    },
+    "arch": {
+      "file": "models/props/arch.glb",
+      "bytes": 32676,
+      "tris": 944
+    },
+    "minimill": {
+      "file": "models/props/minimill.glb",
+      "bytes": 8256,
+      "tris": 108
+    },
+    "feathertotem": {
+      "file": "models/props/feathertotem.glb",
+      "bytes": 6304,
+      "tris": 68
+    },
+    "bunting": {
+      "file": "models/props/bunting.glb",
+      "bytes": 6956,
+      "tris": 118
+    },
+    "trophy": {
+      "file": "models/props/trophy.glb",
+      "bytes": 11256,
+      "tris": 284
+    },
+    "balloon": {
+      "file": "models/props/balloon.glb",
+      "bytes": 216060,
+      "tris": 7338
+    },
+    "board": {
+      "file": "models/props/board.glb",
+      "bytes": 9356,
+      "tris": 216
+    },
+    "island": {
+      "file": "models/props/island.glb",
+      "bytes": 39168,
+      "tris": 1296
+    },
+    "acorn": {
+      "file": "models/props/acorn.glb",
+      "bytes": 6776,
+      "tris": 80
+    },
+    "crow": {
+      "file": "models/props/crow.glb",
+      "bytes": 6456,
+      "tris": 84
+    },
+    "ufo": {
+      "file": "models/props/ufo.glb",
+      "bytes": 12016,
+      "tris": 208
+    },
+    "nest": {
+      "file": "models/props/nest.glb",
+      "bytes": 6444,
+      "tris": 96
+    },
+    "stall_pets": {
+      "file": "models/props/stall_pets.glb",
+      "bytes": 34136,
+      "tris": 1284
+    },
+    "gate": {
+      "file": "models/props/gate.glb",
+      "bytes": 89864,
+      "tris": 3140
+    }
+  },
+  "textures": [
+    "foliage",
+    "blossoms",
+    "leaf",
+    "bark",
+    "soil",
+    "wood",
+    "stone",
+    "paving",
+    "fabric",
+    "petal",
+    "skin",
+    "grass",
+    "fur"
+  ]
+}

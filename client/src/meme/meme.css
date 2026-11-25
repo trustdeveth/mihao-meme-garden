@@ -35,3 +35,24 @@ body.clean #hud, body.clean #memebar, body.clean #labels > :not(.bubble):not(.st
   #memebar { top: auto; bottom: 96px; left: 12px; right: 12px; width: auto; max-height: 46vh; }
   .mmgrid { grid-template-columns: 1fr 1fr 1fr; }
 }
+
+/* ---- post to X ---- */
+.mmbtn.post { grid-column: 1 / -1; min-height: 40px; background: var(--night); color: #fff; font-size: 16px; }
+.postview { display: block; width: 100%; max-height: 42vh; object-fit: contain; background: #000; border: 3px solid var(--bark); border-radius: 4px; }
+.pxlabel { display: block; margin: 10px 0 4px; font-size: 15px; font-weight: 800; }
+.pxinput { width: 100%; box-sizing: border-box; margin-bottom: 6px; padding: 6px 10px; font: 600 16px var(--font); color: var(--ink); background: #fff; border: 3px solid var(--bark); border-radius: 4px; resize: vertical; }
+.pxnote { font-size: 15px; font-weight: 800; }
+.pxnote a { text-decoration: none; }
+#postoffer { position: fixed; right: 12px; bottom: 150px; z-index: 6; display: flex; align-items: stretch; gap: 4px; animation: pofly .5s cubic-bezier(.2, 1.6, .4, 1) backwards, pocall 1.6s ease-in-out .5s infinite; }
+#postoffer button { border: 3px solid var(--bark); border-radius: 6px; box-shadow: var(--shadow); }
+#postoffer .po-go { display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 8px; background: var(--night); color: #fff; text-align: left; }
+#postoffer .po-go .i { width: 34px; height: 34px; }
+#postoffer b { display: block; font-family: Impact, 'Arial Black', var(--font); font-weight: 400; font-size: 20px; letter-spacing: .04em; text-transform: uppercase; }
+#postoffer em { display: block; font-style: normal; font-size: 14px; color: #FFD24A; }
+#postoffer .po-x { padding: 0 4px; background: var(--parchment); }
+#postoffer .po-x .i { width: 26px; height: 26px; }
+@keyframes pofly { from { translate: 120% 0; } }
+@keyframes pocall { 50% { translate: 0 -5px; } }
+body.clean #postoffer { display: none; }
+@media (max-width: 760px) { #postoffer { left: 12px; bottom: 190px; right: auto; } }
+@media (prefers-reduced-motion: reduce) { #postoffer { animation: none; } }

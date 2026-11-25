@@ -6,7 +6,8 @@ import { hasPose } from '@mg/shared/rules/memes';
 import { toWorld, STALLS, PLOT } from '@mg/shared/world/village-layout';
 import { Avatar } from '../render/characters.js';
 import { icon, esc } from '../ui/hud.js';
-import { snapshot, download, ClipRecorder, InstantReplay, CLIP_MAX_MS } from './capture.js';
+import { snapshot, closeUp, download, ClipRecorder, InstantReplay, CLIP_MAX_MS } from './capture.js';
+import { CAPTIONS, STYLES, memeCard, postText, openX, intentUrl, copyPicture, canShareFile } from './share.js';
 
 const BOT = -1;
 const WEATHER_MOMENTS = new Set(['rain', 'storm', 'stars', 'night', 'heatwave', 'frosty']);
@@ -118,8 +119,8 @@ export function createMeme({ store, hud, act, socket, world, chars, player, audi
     socket.raw({ t: 'meme', k: 'moment', id });
     return true;
   }
-  const onHarvest = (items) => { if (items.some((i) => i.big || i.variant !== 'normal')) setTimeout(() => moment('rare'), 1_200); };
-  const onSale = (count) => { if (count >= BIG_SALE_COUNT) moment('sale'); };
+  const onHarvest = (items) => { if (items.some((i) => i.big || i.variant !== 'normal')) { setTimeout(() => moment('rare'), 1_200); offerPost('this harvest is very mihao', 2_600); } };
+  const onSale = (count) => { if (count >= BIG_SALE_COUNT) { moment('sale'); offerPost(`sold ${count} crops. mihao.`); } };
 
   // ---- photo, clip, selfie, clean view ----------------------------------------------------------
   function photo() {
@@ -128,14 +129,104 @@ export function createMeme({ store, hud, act, socket, world, chars, player, audi
     audio.play('pop');
     hud.toast('Photo saved to your downloads, bubbles included.', 'good');
   }
-  const tweetUrl = () => `https://x.com/intent/tweet?text=${encodeURIComponent(`mihao ${CHALLENGE_TAG}`)}`;
+  const tweetUrl = () => intentUrl(postText('mihao'));
+
+  // ---- post to X: pick a caption and a style, then the player posts it from their own X account ------------
+  let style = 'classic';
+  const myCat = () => chars.avatars.get(mySlot())?.avatar.root;
+  function postPanel(shots = null, caption = CAPTIONS[Math.floor(Math.random() * 2)]) {
+    setClean(false);
+    // both pictures are taken as the panel opens: the cat's face (the meme) and the view on screen
+    shots ??= { face: myCat() ? closeUp(world, myCat()) : snapshot(world), view: snapshot(world) };
+    let which = 'face';
+    let picture = null, blob = null;
+    const chips = CAPTIONS.map((t) => `<button class="mmline" data-cap="${esc(t)}">${esc(t)}</button>`).join('');
+    const looks = STYLES.map(([id, name]) => `<button class="btn ${style === id ? 'gold' : 'blue'}" data-style="${id}">${name}</button>`).join('');
+    hud.modal(`<h2>${icon('camera', 'i big')}Post to X</h2><img class="postview" id="pxView" alt="Your meme picture"><label class="pxlabel" for="pxCap">Words on the picture</label><input class="pxinput" id="pxCap" maxlength="80" value="${esc(caption)}"><div class="mmlines">${chips}</div><p class="mmrow">${looks}</p><label class="pxlabel" for="pxText">Your post</label><textarea class="pxinput" id="pxText" maxlength="280" rows="2"></textarea><p class="mmrow"><button class="btn gold" id="pxPost">${icon('chat')}Post on X</button><button class="btn blue" id="pxSave">${icon('check')}Save picture</button></p><p class="mmrow"><span class="pxlabel">Picture:</span><button class="btn gold" data-shot="face">${icon('user')}Cat close-up</button><button class="btn blue" data-shot="view">${icon('camera')}My view</button></p><p class="pxnote" id="pxNote" role="status">You press Post on X yourself. The game never posts for you.</p>`, (c) => {
+      const cap = c.querySelector('#pxCap'), text = c.querySelector('#pxText'), note = c.querySelector('#pxNote');
+      let edited = false;
+      const draw = () => {
+        picture = memeCard(shots[which], cap.value, style);
+        c.querySelector('#pxView').src = picture.toDataURL('image/png');
+        blob = null;
+        const mine = picture;
+        mine.toBlob((b) => { if (mine === picture) blob = b; }, 'image/png');
+        if (!edited) text.value = postText(cap.value);
+      };
+      draw();
+      cap.addEventListener('input', draw);
+      text.addEventListener('input', () => { edited = true; });
+      c.querySelectorAll('[data-cap]').forEach((b) => b.addEventListener('click', () => { cap.value = b.dataset.cap; draw(); }));
+      c.querySelectorAll('[data-style]').forEach((b) => b.addEventListener('click', () => {
+        style = b.dataset.style;
+        c.querySelectorAll('[data-style]').forEach((x) => { x.className = `btn ${x === b ? 'gold' : 'blue'}`; });
+        draw();
+      }));
+      const name = () => `mihao-meme-${Date.now()}.png`;
+      c.querySelector('#pxSave').addEventListener('click', () => { download(picture.toDataURL('image/png'), name()); note.textContent = 'Picture saved to your downloads.'; });
+      c.querySelectorAll('[data-shot]').forEach((b) => b.addEventListener('click', () => {
+        which = b.dataset.shot;
+        c.querySelectorAll('[data-shot]').forEach((x) => { x.className = `btn ${x === b ? 'gold' : 'blue'}`; });
+        draw();
+      }));
+      c.querySelector('#pxPost').addEventListener('click', async () => {
+        const ready = blob ?? await new Promise((done) => picture.toBlob(done, 'image/png'));
+        const words = text.value.trim() || postText(cap.value);
+        const file = new File([ready], name(), { type: 'image/png' });
+        if (canShareFile(file)) { // phones: the share menu attaches the picture for you
+          try { await navigator.share({ files: [file], text: words }); note.textContent = 'Choose X in the share menu, then press Post.'; } catch { note.textContent = 'Sharing was cancelled.'; }
+          return;
+        }
+        const copied = await copyPicture(ready);
+        if (!copied) download(picture.toDataURL('image/png'), file.name);
+        const how = copied ? 'Picture copied. In the X window, click the post box, press Ctrl+V (Cmd+V on a Mac), then press Post.' : 'Picture saved to your downloads. In the X window, attach it, then press Post.';
+        const opened = openX(words);
+        note.textContent = opened ? how : `${how} Your browser blocked the new tab:`;
+        if (!opened) { const a = document.createElement('a'); a.href = intentUrl(words); a.target = '_blank'; a.rel = 'noopener noreferrer'; a.className = 'btn gold'; a.textContent = 'Open X'; note.append(' ', a); }
+      });
+    });
+  }
+
+  // after a big moment, a small button offers to post it; it goes away by itself
+  let offer = null, offerAt = -1e9;
+  function offerPost(caption, delay = 1_600) {
+    setTimeout(() => {
+      const now = performance.now();
+      if (!auto || offer || duel || hud.modalOpen || document.hidden || now - offerAt < 60_000) return;
+      offerAt = now;
+      const shots = { face: myCat() ? closeUp(world, myCat()) : snapshot(world), view: snapshot(world) }; // of the moment itself
+      offer = document.createElement('div');
+      offer.id = 'postoffer';
+      offer.innerHTML = `<button class="po-go">${icon('camera')}<span><b>Post this to X</b><em></em></span></button><button class="po-x" aria-label="Not now">${icon('close')}</button>`;
+      offer.querySelector('em').textContent = caption;
+      document.body.appendChild(offer);
+      const gone = () => { offer?.remove(); offer = null; };
+      offer.querySelector('.po-go').addEventListener('click', () => { gone(); postPanel(shots, caption); });
+      offer.querySelector('.po-x').addEventListener('click', gone);
+      setTimeout(gone, 12_000);
+    }, delay);
+  }
+  /** Actions worth bragging about. */
+  const BRAGS = { rebirth: 'promoted. very mihao.', buyHome: 'new official residence', buyWear: 'new drip. mihao.', hatch: 'it hatched. mihao?' };
+  const onAction = (a) => { if (BRAGS[a]) offerPost(BRAGS[a]); };
   function clipReady(blob, ext) {
     refreshBar();
     if (!blob.size) return hud.toast('The clip came out empty. Try again.', 'bad');
     const url = URL.createObjectURL(blob);
     const name = `mihao-clip-${Date.now()}.${ext}`;
+    const file = new File([blob], name, { type: blob.type });
     setClean(false);
-    hud.modal(`<h2>${icon('camera', 'i big')}Your clip</h2><video class="clipview" src="${url}" controls loop autoplay muted playsinline></video><p class="soft">No sound. To post it: download, open X, then attach the file.${ext === 'webm' ? ' If X refuses the .webm file, convert it to .mp4 first.' : ''}</p><p class="mmrow"><button class="btn gold" id="mmDl">${icon('check')}Download</button><a class="btn blue" href="${tweetUrl()}" target="_blank" rel="noopener noreferrer">Open X</a></p>`, (c) => c.querySelector('#mmDl').addEventListener('click', () => download(url, name)));
+    hud.modal(`<h2>${icon('camera', 'i big')}Your clip</h2><video class="clipview" src="${url}" controls loop autoplay muted playsinline></video><p class="soft">No sound.${ext === 'webm' ? ' If X refuses the .webm file, convert it to .mp4 first.' : ''}</p><p class="mmrow"><button class="btn gold" id="mmPost">${icon('chat')}Post on X</button><button class="btn blue" id="mmDl">${icon('check')}Download</button></p><p class="pxnote" id="mmNote" role="status">Post on X saves the clip and opens X. Attach the file there, then press Post.</p>`, (c) => {
+      const note = c.querySelector('#mmNote');
+      c.querySelector('#mmDl').addEventListener('click', () => download(url, name));
+      c.querySelector('#mmPost').addEventListener('click', async () => {
+        if (canShareFile(file)) { try { await navigator.share({ files: [file], text: postText('mihao') }); note.textContent = 'Choose X in the share menu, then press Post.'; } catch { note.textContent = 'Sharing was cancelled.'; } return; }
+        download(url, name);
+        if (openX(postText('mihao'))) { note.textContent = `Saved as ${name}. Attach it in the X window, then press Post.`; return; }
+        note.textContent = `Saved as ${name}. Your browser blocked the new tab:`;
+        const a = document.createElement('a'); a.href = tweetUrl(); a.target = '_blank'; a.rel = 'noopener noreferrer'; a.className = 'btn gold'; a.textContent = 'Open X'; note.append(' ', a);
+      });
+    });
     // free the video once the panel is gone
     const watch = setInterval(() => { if (!document.querySelector(`video[src="${url}"]`) || $('modal').hidden) { clearInterval(watch); setTimeout(() => URL.revokeObjectURL(url), 30_000); } }, 2_000);
     return undefined;
@@ -358,6 +449,7 @@ export function createMeme({ store, hud, act, socket, world, chars, player, audi
       <div class="mmgrid">${poses}</div>
       <div class="mmlines">${LINES.map((l, i) => `<button class="mmline" data-line="${i}">${esc(l)}</button>`).join('')}</div>
       <div class="mmgrid">
+        <button class="mmbtn act post" data-do="post">${icon('chat')}Post to X (X)</button>
         <button class="mmbtn act" data-do="photo">Photo (P)</button>
         <button class="mmbtn act${rec.active ? ' rec' : ''}" data-do="record">${rec.active ? `Stop ${Math.floor(rec.seconds)}s` : 'Record clip'}</button>
         <button class="mmbtn act" data-do="selfie">Pose booth cam</button>
@@ -371,7 +463,7 @@ export function createMeme({ store, hud, act, socket, world, chars, player, audi
       <label class="mmauto" title="Keeps recording the game so you can save what just happened. Uses more power."><input type="checkbox" id="mmReplay" ${replayWanted ? 'checked' : ''}> Instant replay (uses more power)</label>
       ${replay.active ? '<button class="mmbtn act" data-do="moment">Save last moment (L)</button>' : ''}`;
   }
-  const DO = { close: () => toggleBar(false), moment: saveMoment, photo, record: toggleRecord, selfie, clean: () => setClean(true), beard: () => challenge('beard'), pointing: () => challenge('point'), stamps: stampsPanel, challenge: challengePanel };
+  const DO = { close: () => toggleBar(false), post: () => postPanel(), moment: saveMoment, photo, record: toggleRecord, selfie, clean: () => setClean(true), beard: () => challenge('beard'), pointing: () => challenge('point'), stamps: stampsPanel, challenge: challengePanel };
   bar.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -401,6 +493,7 @@ export function createMeme({ store, hud, act, socket, world, chars, player, audi
     if (e.code === 'KeyG') { setClean(false); toggleBar(); }
     if (e.code === 'KeyH') setClean(!document.body.classList.contains('clean'));
     if (e.code === 'KeyP') photo();
+    if (e.code === 'KeyX') postPanel();
     if (e.code === 'KeyL') saveMoment();
     if (e.key === 'Escape') setClean(false);
   });
@@ -448,5 +541,5 @@ export function createMeme({ store, hud, act, socket, world, chars, player, audi
     if (rec.active && now - barAt > 500) { barAt = now; refreshBar(); }
   }
 
-  return { update, afterRender: () => { rec.frame(); replay.frame(); }, saveMoment, replay, moment, onHarvest, onSale, photo, toggleBar, stampsPanel, challengePanel, inspectorSpot, showGarden };
+  return { update, afterRender: () => { rec.frame(); replay.frame(); }, saveMoment, replay, moment, onHarvest, onSale, onAction, postPanel, photo, toggleBar, stampsPanel, challengePanel, inspectorSpot, showGarden };
 }

@@ -83,6 +83,28 @@ export function snapshot(world) {
   return c;
 }
 
+/**
+ * A close-up of a character's face, taken with the camera swung round in front of them for one frame.
+ * The player's own view is put straight back. No bubbles: they are placed for the player's view.
+ */
+export function closeUp(world, root) {
+  const cam = world.camera, was = { p: cam.position.clone(), q: cam.quaternion.clone() };
+  const a = root.rotation.y + 0.12, tall = root.scale.y, d = 3.5 * tall;
+  cam.position.set(root.position.x + Math.sin(a) * d, root.position.y + 1.85 * tall, root.position.z + Math.cos(a) * d);
+  cam.lookAt(root.position.x, root.position.y + 1.78 * tall, root.position.z);
+  cam.updateMatrixWorld();
+  world.renderer.render(world.scene, cam);
+  const src = world.renderer.domElement;
+  const c = document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const g = c.getContext('2d');
+  g.drawImage(src, 0, 0);
+  watermark(g, c.width, c.height);
+  cam.position.copy(was.p); cam.quaternion.copy(was.q); cam.updateMatrixWorld();
+  world.renderer.render(world.scene, cam);
+  return c;
+}
+
 export function download(url, name) {
   const a = document.createElement('a');
   a.download = name;

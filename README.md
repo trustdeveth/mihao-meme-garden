@@ -26,6 +26,7 @@ Cosmetic only: none of them gives coins, gems, reputation, Season Points or MGRD
 - **Mihao stamps**: the old garden like, now with a stamp effect and a guestbook (Menu > Stamps).
 - **Meme Points**: rare harvest 3, leaving a stamp 2, passed inspection 15, contest win 5 (2 against Gus), at most 60 a day. They only unlock poses.
 - **Instant replay** (off by default; Mihao Cam > Instant replay): **L** or **Save last moment** keeps the last 7.5 to 15 seconds (less just after switching it on). It records continuously while on, so it uses more power. It stops while the tab is hidden.
+- **Post to X** (**X**, or the button in Mihao Cam): makes a meme picture (a close-up of your cat's face, or the view on screen) with a caption and one of four styles. On a computer it copies the picture and opens X with the words filled in; on a phone it uses the share menu. A small "Post this to X" button appears after big moments (it follows the Auto moments switch). The player always presses Post themselves; the game holds no X login or key and gives no reward for posting. Set `VITE_SHARE_URL` to choose the link added to posts (by default the site's own https address; local addresses are left out).
 - **Weekly Meme Challenge** (Menu): a new prompt each week. Players post on X and paste the link into the challenge panel (one entry each per week). Nothing is public until a moderator approves it:
   ```bash
   npm run challenge -- list                # entries waiting this week

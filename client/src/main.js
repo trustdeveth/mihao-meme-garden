@@ -196,6 +196,7 @@ async function act(a, p = {}, { quiet = false } = {}) {
     const sfx = { plant: 'plant', water: 'water', harvest: 'harvest', sell: 'coin', buySeed: 'coin', buyGadget: 'coin', buyEgg: 'coin', buyDecor: 'coin', buyHome: 'levelup', hatch: 'hatch', expandSoil: 'levelup', claimQuest: 'coin', claimGift: 'rare', claimCollection: 'rare', claimSeason: 'coin', deliverOrder: 'coin', deliverContract: 'rare', pickAcorn: 'pop', placeDecor: 'plant', surprise: 'rare', rebirth: 'levelup', unlockIsland: 'levelup' }[a];
     if (sfx) audio.play(sfx);
     if (a === 'sell') meme?.onSale(r.x?.count ?? 0);
+    meme?.onAction(a);
     juice?.result(a, p, r);
     if (a === 'travel') setTimeout(() => juice?.travel(from, { x: player.pos.x, z: player.pos.z }), 60);
     if ((store.me?.rep?.level ?? 0) > before) { audio.play('levelup'); hud.toast(`Reputation level ${store.me.rep.level}!`, 'gold', 3500); juice?.levelUp(store.me.rep.level); }

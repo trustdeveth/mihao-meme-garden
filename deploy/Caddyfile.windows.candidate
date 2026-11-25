@@ -21,3 +21,15 @@ mihaomeme.garden, www.mihaomeme.garden {
     encode gzip zstd
     reverse_proxy 127.0.0.1:8892
 }
+
+
+doc.mihaomeme.garden {
+    encode gzip zstd
+    root * "C:/Users/Administrator/Documents/Meme/mihao-meme-garden/docs-site"
+    try_files {path} {path}.html {path}/index.html
+    file_server
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+}

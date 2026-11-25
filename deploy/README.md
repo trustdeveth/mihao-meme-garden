@@ -27,9 +27,23 @@ git pull
 npm ci
 npm run build
 npm run test:shared; npm run test:server
+# Restart (only needed when server/ or shared/ changed; client changes are
+# live after `npm run build` because client/dist is read from disk).
+# Stop-ScheduledTask does NOT stop the node child process, so kill it too.
+# The game flushes to SQLite every 5 s; up to 5 s of progress can be lost.
 Stop-ScheduledTask -TaskName MihaoMemeGarden
+Get-NetTCPConnection -State Listen -LocalPort 8892 -ErrorAction SilentlyContinue |
+    ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
 Start-ScheduledTask -TaskName MihaoMemeGarden
 Invoke-RestMethod http://127.0.0.1:8892/api/health
 ```
+
+## Docs site
+
+https://doc.mihaomeme.garden is served by Caddy straight from `docs-site/`
+(static files, no build, no process). Editing or pulling files there makes
+them live immediately. Caddy backup before adding it:
+`C:/caddy/Caddyfile.bak-mihao-doc-20261125-014228`.
+Requires DNS: A record `doc` -> 170.205.30.90.
 
 Weekly challenge moderation runs here too: `npm run challenge -- list`.

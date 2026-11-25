@@ -7,7 +7,7 @@ import { toWorld, STALLS, PLOT } from '@mg/shared/world/village-layout';
 import { Avatar } from '../render/characters.js';
 import { icon, esc } from '../ui/hud.js';
 import { snapshot, closeUp, download, ClipRecorder, InstantReplay, CLIP_MAX_MS } from './capture.js';
-import { CAPTIONS, STYLES, memeCard, postText, openX, intentUrl, copyPicture, canShareFile } from './share.js';
+import { CAPTIONS, STYLES, memeCard, postText, openX, intentUrl, copyPicture, canShareFile, uploadPicture, textWithPicture, reserveTab } from './share.js';
 
 const BOT = -1;
 const WEATHER_MOMENTS = new Set(['rain', 'storm', 'stars', 'night', 'heatwave', 'frosty']);
@@ -142,7 +142,7 @@ export function createMeme({ store, hud, act, socket, world, chars, player, audi
     let picture = null, blob = null;
     const chips = CAPTIONS.map((t) => `<button class="mmline" data-cap="${esc(t)}">${esc(t)}</button>`).join('');
     const looks = STYLES.map(([id, name]) => `<button class="btn ${style === id ? 'gold' : 'blue'}" data-style="${id}">${name}</button>`).join('');
-    hud.modal(`<h2>${icon('camera', 'i big')}Post to X</h2><img class="postview" id="pxView" alt="Your meme picture"><label class="pxlabel" for="pxCap">Words on the picture</label><input class="pxinput" id="pxCap" maxlength="80" value="${esc(caption)}"><div class="mmlines">${chips}</div><p class="mmrow">${looks}</p><label class="pxlabel" for="pxText">Your post</label><textarea class="pxinput" id="pxText" maxlength="280" rows="2"></textarea><p class="mmrow"><button class="btn gold" id="pxPost">${icon('chat')}Post on X</button><button class="btn blue" id="pxSave">${icon('check')}Save picture</button></p><p class="mmrow"><span class="pxlabel">Picture:</span><button class="btn gold" data-shot="face">${icon('user')}Cat close-up</button><button class="btn blue" data-shot="view">${icon('camera')}My view</button></p><p class="pxnote" id="pxNote" role="status">You press Post on X yourself. The game never posts for you.</p>`, (c) => {
+    hud.modal(`<h2>${icon('camera', 'i big')}Post to X</h2><img class="postview" id="pxView" alt="Your meme picture"><label class="pxlabel" for="pxCap">Words on the picture</label><input class="pxinput" id="pxCap" maxlength="80" value="${esc(caption)}"><div class="mmlines">${chips}</div><p class="mmrow">${looks}</p><label class="pxlabel" for="pxText">Your post</label><textarea class="pxinput" id="pxText" maxlength="280" rows="2"></textarea><p class="mmrow"><button class="btn gold" id="pxPost">${icon('chat')}Post on X</button><button class="btn blue" id="pxSave">${icon('check')}Save picture</button></p><p class="mmrow"><span class="pxlabel">Picture:</span><button class="btn gold" data-shot="face">${icon('user')}Cat close-up</button><button class="btn blue" data-shot="view">${icon('camera')}My view</button></p><p class="pxnote" id="pxNote" role="status">On a computer, Post on X puts this picture online so X can show it: anyone with the link can see it. You press Post yourself.</p>`, (c) => {
       const cap = c.querySelector('#pxCap'), text = c.querySelector('#pxText'), note = c.querySelector('#pxNote');
       let edited = false;
       const draw = () => {
@@ -169,7 +169,8 @@ export function createMeme({ store, hud, act, socket, world, chars, player, audi
         c.querySelectorAll('[data-shot]').forEach((x) => { x.className = `btn ${x === b ? 'gold' : 'blue'}`; });
         draw();
       }));
-      c.querySelector('#pxPost').addEventListener('click', async () => {
+      const post = c.querySelector('#pxPost');
+      post.addEventListener('click', async () => {
         const ready = blob ?? await new Promise((done) => picture.toBlob(done, 'image/png'));
         const words = text.value.trim() || postText(cap.value);
         const file = new File([ready], name(), { type: 'image/png' });
@@ -177,12 +178,32 @@ export function createMeme({ store, hud, act, socket, world, chars, player, audi
           try { await navigator.share({ files: [file], text: words }); note.textContent = 'Choose X in the share menu, then press Post.'; } catch { note.textContent = 'Sharing was cancelled.'; }
           return;
         }
-        const copied = await copyPicture(ready);
-        if (!copied) download(picture.toDataURL('image/png'), file.name);
-        const how = copied ? 'Picture copied. In the X window, click the post box, press Ctrl+V (Cmd+V on a Mac), then press Post.' : 'Picture saved to your downloads. In the X window, attach it, then press Post.';
-        const opened = openX(words);
-        note.textContent = opened ? how : `${how} Your browser blocked the new tab:`;
-        if (!opened) { const a = document.createElement('a'); a.href = intentUrl(words); a.target = '_blank'; a.rel = 'noopener noreferrer'; a.className = 'btn gold'; a.textContent = 'Open X'; note.append(' ', a); }
+        post.disabled = true;
+        const shown = picture; // what is on screen now, even if the caption changes while it uploads
+        const copied = await copyPicture(ready); // first, while this page still has the keyboard
+        const tab = reserveTab();
+        note.textContent = 'Putting your picture online...';
+        let finalText = words, message;
+        const paste = copied ? 'click the post box, press Ctrl+V (Cmd+V on a Mac), then press Post.' : 'attach the saved picture, then press Post.';
+        const saveInstead = () => { if (!copied) download(shown.toDataURL('image/png'), file.name); };
+        try {
+          const shared = await uploadPicture(shown);
+          if (shared.public) {
+            finalText = textWithPicture(words, shared.url);
+            message = `Your picture is in the post. X shows it as a preview under your words; it can take a few seconds to appear. Then press Post.${copied ? ' To attach it as a photo instead, click the post box and press Ctrl+V first.' : ''}`;
+          } else {
+            saveInstead();
+            message = `This is a local test address, so X cannot load the picture from it. On the live website it appears by itself. For now, in the X window ${paste}`;
+          }
+        } catch (err) {
+          saveInstead();
+          message = `${err.message || 'The picture could not be put online.'} In the X window ${paste}`;
+        }
+        post.disabled = false;
+        let opened = !!tab && !tab.closed;
+        if (opened) { try { tab.location.href = intentUrl(finalText); } catch { opened = false; } }
+        note.textContent = opened ? message : `${message} Your browser blocked or closed the new tab:`;
+        if (!opened) { const a = document.createElement('a'); a.href = intentUrl(finalText); a.target = '_blank'; a.rel = 'noopener noreferrer'; a.className = 'btn gold'; a.textContent = 'Open X'; note.append(' ', a); }
       });
     });
   }

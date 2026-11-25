@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { openDb } from './db.js';
 import { RoomManager } from './rooms.js';
 import { registerChain, chainConfig } from './chain.js';
+import { registerShare } from './share.js';
 import { sha256, token, recoveryCode, normalizeRecovery, guestName, makeTicket, readTicket, Bucket, cleanChat } from './security.js';
 
 const SESSION_COOKIE = 'mg_session';
@@ -174,6 +175,9 @@ export async function createServer(opts = {}) {
     if (r === 'taken') return reply.code(409).send({ error: 'Someone already entered that post.' });
     return { ok: true, mine: { url: post.url, title, status: 'pending' } };
   });
+
+  // pictures for "Post to X" (see share.js)
+  await registerShare(app, { db, sessionPlayer, now, origins, publicUrl: opts.publicUrl ?? process.env.MG_PUBLIC_URL, enabled: (opts.share ?? process.env.MG_SHARE) !== '0' });
 
   app.post('/api/ws-ticket', async (req, reply) => {
     const p = sessionPlayer(req);

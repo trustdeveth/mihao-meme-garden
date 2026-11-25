@@ -1,6 +1,7 @@
-// Posting to X. The game makes the meme picture and opens X with the words filled in; the player attaches
-// the picture and presses Post themselves. Nothing is posted automatically, nothing is rewarded, and no
-// X account, key or login is ever handled by the game.
+// Posting to X. The game makes the meme picture and opens X with the words filled in. X's post link cannot carry
+// a file, so on a computer the picture is put online on the game's server and its link goes in the post: X shows
+// it as a large preview. (Phones share the file itself.) The player always presses Post. Nothing is posted
+// automatically or rewarded, and no X account, key or login is ever handled by the game.
 import { CHALLENGE_TAG } from '@mg/shared/data/memes';
 
 export const CAPTIONS = [
@@ -87,6 +88,61 @@ const phone = () => matchMedia('(pointer: coarse)').matches;
 /** Phones can hand the picture or clip straight to the X app through their own share menu. */
 export function canShareFile(file) {
   try { return phone() && !!navigator.canShare?.({ files: [file] }); } catch { return false; }
+}
+/** X shows large previews about 1.91 wide for every 1 tall, and cuts off whatever does not fit. */
+export const CARD = { w: 1200, h: 628 };
+/** The whole picture, fitted inside X's preview shape so the words are never cut off. The sides are filled with a blur of it. */
+export function previewShape(picture) {
+  const c = document.createElement('canvas');
+  c.width = CARD.w; c.height = CARD.h;
+  const g = c.getContext('2d');
+  g.fillStyle = '#17120F';
+  g.fillRect(0, 0, c.width, c.height);
+  const cover = Math.max(CARD.w / picture.width, CARD.h / picture.height);
+  if ('filter' in g) {
+    g.filter = 'blur(22px) brightness(.55)';
+    g.drawImage(picture, (CARD.w - picture.width * cover) / 2, (CARD.h - picture.height * cover) / 2, picture.width * cover, picture.height * cover);
+    g.filter = 'none';
+  }
+  const fit = Math.min(CARD.w / picture.width, CARD.h / picture.height);
+  g.drawImage(picture, (CARD.w - picture.width * fit) / 2, (CARD.h - picture.height * fit) / 2, picture.width * fit, picture.height * fit);
+  return c;
+}
+
+/** The picture as a JPEG small enough to upload. */
+async function jpegOf(canvas) {
+  for (const quality of [0.9, 0.75, 0.6]) {
+    const blob = await new Promise((done) => canvas.toBlob(done, 'image/jpeg', quality));
+    if (blob && blob.size < 1_400_000) return blob;
+  }
+  throw new Error('The picture is too big to share.');
+}
+/** Put the picture on the game's server. Resolves to {url, public}; public is false where X cannot reach it. */
+export async function uploadPicture(canvas) {
+  const r = await fetch('/api/share', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'image/jpeg' }, body: await jpegOf(previewShape(canvas)), signal: AbortSignal.timeout(20_000) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error ?? 'The picture could not be put online.');
+  return data;
+}
+/**
+ * The post with the picture's link last (X previews the last link). The plain game link is dropped, since the
+ * picture's page links to the game, and the words are shortened if needed to fit (X counts a link as 23).
+ */
+export function textWithPicture(words, url, home = shareLink()) {
+  let text = home ? words.split(home).join('') : words;
+  text = text.replace(/[ \t]{2,}/g, ' ').trim();
+  if (text.length > 256) text = `${text.slice(0, 255).trimEnd()}\u2026`;
+  return `${text} ${url}`.trim();
+}
+/**
+ * Open the X tab during the click (browsers block tabs opened later), then send it to X when the words are ready.
+ * Returns null if the browser blocked the tab.
+ */
+export function reserveTab() {
+  const tab = window.open('', '_blank');
+  if (!tab) return null;
+  try { tab.opener = null; tab.document.title = 'Opening X'; tab.document.body.textContent = 'Putting your picture online...'; } catch { /* some browsers do not let us write in it */ }
+  return tab;
 }
 /** Open X with the words filled in. Returns false if the browser blocked the new tab. */
 export function openX(text) {

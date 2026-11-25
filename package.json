@@ -27,6 +27,7 @@
     "e2e": "node e2e/two-tab.mjs && node e2e/features.mjs",
     "e2e:memes": "node e2e/memes.mjs",
     "challenge": "node tools/challenge-admin.mjs",
+    "shares": "node tools/share-admin.mjs",
     "showcase": "node e2e/showcase.mjs",
     "load": "node tools/load/bots.mjs",
     "chain:setup-wsl": "wsl -d Ubuntu -- bash /mnt/d/work/meme/solana-garden-plan/meme-garden/chain/scripts/wsl-setup.sh",

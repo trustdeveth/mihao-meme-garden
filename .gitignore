@@ -6,4 +6,5 @@ e2e/out/
 *.db
 *.db-wal
 *.db-shm
+.env.x
 .env

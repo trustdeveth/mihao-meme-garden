@@ -2,7 +2,7 @@
   "name": "meme-garden",
   "private": true,
   "version": "0.1.0",
-  "description": "Meme Garden: free multiplayer 3D garden game (server-authoritative; optional BNB Chain token layer, off by default)",
+  "description": "Meme Garden: free multiplayer 3D garden game (server-authoritative; optional Solana token layer, off by default)",
   "type": "module",
   "workspaces": [
     "shared",
@@ -15,6 +15,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:x": "node scripts/dev-x.mjs",
     "test": "node --test \"shared/test/*.test.js\" \"server/test/*.test.js\" && node tools/budget/check-budgets.mjs",
     "test:shared": "node --test \"shared/test/*.test.js\"",
     "test:server": "node --test \"server/test/*.test.js\"",
@@ -30,10 +31,10 @@
     "shares": "node tools/share-admin.mjs",
     "showcase": "node e2e/showcase.mjs",
     "load": "node tools/load/bots.mjs",
-    "chain:build": "node tools/chain/build.mjs",
+    "chain:build": "wsl -d Ubuntu -- bash /mnt/d/work/meme/solana-garden-plan/mihao-meme-garden/chain/scripts/build.sh",
+    "chain:build-test": "wsl -d Ubuntu -- bash /mnt/d/work/meme/solana-garden-plan/mihao-meme-garden/chain/scripts/build.sh --test",
+    "chain:test-program": "node tools/chain/solana-program-test.mjs",
     "chain:e2e": "node tools/chain/local-e2e.mjs",
-    "chain:rehearse": "node tools/chain/rehearse.mjs",
-    "chain:admin": "node tools/chain/admin.mjs",
-    "dev:testnet": "node scripts/dev-testnet.mjs"
+    "chain:admin": "node tools/chain/admin.mjs"
   }
 }

@@ -9,11 +9,10 @@
     "@gltf-transform/extensions": "^4.5.1",
     "@gltf-transform/functions": "^4.5.1",
     "@mg/shared": "*",
-    "@openzeppelin/contracts": "5.6.1",
+    "@solana/spl-token": "0.4.14",
     "meshoptimizer": "^1.3.0",
     "puppeteer-core": "^25.0.0",
     "three": "^0.187.0",
-    "viem": "2.57.17",
     "ws": "^8.18.0"
   }
 }

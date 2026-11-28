@@ -1,7 +1,7 @@
 // Shrinks exported GLB files: dedupe, quantize vertex data and apply meshopt compression.
 // three.js decodes this with GLTFLoader.setMeshoptDecoder(MeshoptDecoder).
 import { NodeIO, PropertyType } from '@gltf-transform/core';
-import { EXTMeshoptCompression, KHRMeshQuantization } from '@gltf-transform/extensions';
+import { EXTMeshoptCompression, KHRMeshQuantization, KHRMaterialsClearcoat, KHRMaterialsUnlit, KHRMaterialsEmissiveStrength } from '@gltf-transform/extensions';
 import { dedup, prune, quantize, reorder, meshopt } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -10,7 +10,7 @@ let io;
 async function getIO() {
   if (io) return io;
   await MeshoptEncoder.ready;
-  io = new NodeIO().registerExtensions([EXTMeshoptCompression, KHRMeshQuantization]).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
+  io = new NodeIO().registerExtensions([EXTMeshoptCompression, KHRMeshQuantization, KHRMaterialsClearcoat, KHRMaterialsUnlit, KHRMaterialsEmissiveStrength]).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
   return io;
 }
 

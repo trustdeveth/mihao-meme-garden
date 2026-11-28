@@ -27,6 +27,7 @@ import { Audio } from './audio.js';
 import { createFeatures } from './ui/features.js';
 import { createMgrd } from './chain/mgrd.js';
 import { siteLinks, linkMenuItems } from './links.js';
+import { createConnectX } from './connect-x.js';
 import { BALLOON, BOARD, onIsland } from '@mg/shared/world/village-layout';
 import { DECOR, HOME_SPOT, NEST_SPOT, ISLAND } from '@mg/shared/data/features';
 import { canPlaceDecor, DECOR_MSG } from '@mg/shared/rules/estate';
@@ -53,6 +54,7 @@ const LOAD_TIPS = [
 
 const store = new Store();
 let socket, world, assets, plants, chars, player, hud, sky, labels, estate, audio, F, plaza, meme;
+let connectX = { menuItems: () => [] }; // admin gifts; replaced once the game has loaded
 let juice, ambient; // cosmetic: action celebrations and background life
 let quality; // graphics level
 let placing = null; // {kind, moveId, rot} while placing a decoration
@@ -111,6 +113,8 @@ async function boot() {
   $('loading').classList.add('done');
   hud.show();
   if (session.recoveryCode) showRecovery(session.recoveryCode, true);
+  connectX = createConnectX({ hud });
+  connectX.start(); // not awaited: the game never waits for it
   // test hooks for the end-to-end scripts (only with ?debug in the URL)
   if (new URLSearchParams(location.search).has('debug')) {
     window.__mg = {
@@ -165,6 +169,7 @@ function wireSocket() {
     if (!hadSurprise && store.me.surprise) { audio.play('rare'); hud.toast({ crow: 'A crow is raiding your garden! Shoo it (E)!', gnome: 'A gnome is sneaking through your garden! Catch it (E)!', alien: 'A lost alien landed in your garden! It wants a snack (E).' }[store.me.surprise.kind], 'info', 5000); }
   });
   socket.on('pethelp', (m) => { for (const h of m.helped) chars.petWork(m.slot, h); });
+  socket.on('gift', (m) => { const mem = store.members.get(m.slot); if (mem) { mem.gift = m.gift; chars.sync(); } });
   socket.on('profile', (m) => { const mem = store.members.get(m.slot); if (mem) { Object.assign(mem, { avatar: m.avatar, title: m.title, stars: m.stars, holder: m.holder, club: m.club }); chars.sync(); } });
   store.on('garden', () => chars.syncPets());
   socket.on('pos', (m) => {
@@ -796,7 +801,7 @@ function openPanel(name) {
     });
     hud.panel = 'room';
   } else if (name === 'more') {
-    F.more([['mgrd', '$MGRD Rewards', () => window.__mgOpenMgrd?.()], ['settings', 'Settings', openSettings], ...linkMenuItems()]);
+    F.more([['mgrd', '$MGRD Rewards', () => window.__mgOpenMgrd?.()], ['settings', 'Settings', openSettings], ...connectX.menuItems(), ...linkMenuItems()]);
   }
 }
 

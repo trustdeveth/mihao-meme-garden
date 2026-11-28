@@ -1,117 +1,100 @@
 #!/usr/bin/env node
-// Operator tool for the MGRD contracts on BNB Chain. Nothing here runs automatically; every command is explicit.
-// --network is bsc-testnet (default), bsc or local. Sending anything on bsc (real money) also needs --yes-mainnet.
-// The signing key is read from --key-file (a file holding one 0x private key) or MG_ADMIN_KEY. It is never printed.
+// Operator tool for the MGRD reward program on Solana. Nothing here runs automatically; every command is explicit.
+// Order: deploy the program (see chain/README.md), launch the token, check-token, init, fund, then weekly work.
 //
-//   node tools/chain/admin.mjs new-wallet --out chain/keys/testnet.key
-//       Creates a new key for TESTING and prints only its address (fund it from the BNB Chain testnet faucet).
-//   node tools/chain/admin.mjs deploy   --key-file F [--treasury 0x..] [--recycle-bps 5000] [--new-owner 0x..]
-//       Deploys GardenRewards only. The token is launched separately (on Flap) and named afterwards. With
-//       --owner 0x.. (needs --treasury) that wallet owns the contract from the first moment and the deploying key gets
-//       no control at all. Or --new-owner 0x.. proposes an owner later, which must then accept.
-//   node tools/chain/admin.mjs set-token --token 0x.. --rewards 0x.. [--key-file F --yes]
-//       Shows the token's details. With --key-file and --yes it names that token in the contract. THIS WORKS ONCE.
-//   node tools/chain/admin.mjs rescue   --asset bnb|0x.. --to 0x.. --rewards 0x.. --key-file F
-//       Sends out BNB or another token that reached the contract (for example holder dividends). Never the game token.
-//   node tools/chain/admin.mjs fund     --amount 1000000 --rewards 0x.. --key-file F
-//       Moves tokens (for example the developer's launch buy) from the key's wallet into the reward pool.
-//   node tools/chain/admin.mjs finalize --week 2026-11-09 --rewards 0x.. --token 0x.. [--pool 100000] [--min 1] [--deadline-days 30] [--db ...]
+// Chain commands take --rpc URL (default: a local test network), --program ID and, to send anything,
+// --keypair wallet.json. Sending to anything but a local, dev or test network also needs --yes-mainnet.
+//
+//   check-token    --mint MINT --rpc URL
+//       Reads the token and says whether the program accepts it. Sends nothing.
+//   init           --mint MINT --rpc --program --keypair [--recycle-bps 5000] [--treasury-owner PUBKEY] [--yes]
+//       Gives the deployed program its token. Works ONCE and only with the program's upgrade-authority wallet, which
+//       becomes the admin. Without --yes it only checks and shows what it would do.
+//   fund           --amount TOKENS --rpc --program --keypair [--yes]   puts tokens from your wallet into the rewards vault
+//   status         --rpc --program [--epoch N]
+//   finalize       --week 2026-11-09 --rpc --program [--pool 100000] [--min 1] [--deadline-days 30] [--db FILE]
 //       Computes the week's allocations from Season Points (linked wallets only, 1% per-player cap, small amounts
-//       carried to next week), builds the Merkle tree and stores it. Add --send --key-file to publish the root
-//       (openEpoch); the pool must already hold enough MGRD. Without --send it prints the data for a multisig.
-//   node tools/chain/admin.mjs close    --epoch N --rewards 0x.. --key-file F      (after the claim deadline)
-//   node tools/chain/admin.mjs pause    --on|--off --rewards 0x.. --key-file F
-//   node tools/chain/admin.mjs status   --rewards 0x.. [--epoch N]
-//   node tools/chain/admin.mjs poll     --question "Next festival theme?" --options "Moon Fair,Candy Week" [--days 7] [--db ...]
-//       Starts a holder vote (shown in the game under $MGRD Rewards > Community; votes are weighted by holder badge).
-//   node tools/chain/admin.mjs burn     --amount 1000 --token 0x.. --key-file treasury.key [--note "..."] [--db ...]
-//       Sends tokens from the key's wallet (use the treasury's) to the dead address, where nobody can ever move
-//       them, and records it publicly (shown with the transaction). The token's total supply number stays the same.
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+//       carried over), builds the Merkle tree and stores it. Add --send --keypair to publish it (open_epoch).
+//   close          --epoch N --rpc --program --keypair          after the claim deadline
+//   pause          --on | --off  --rpc --program --keypair
+//   set-treasury   --treasury-owner PUBKEY --rpc --program --keypair
+//   new-admin      --admin PUBKEY --rpc --program --keypair      step 1: propose
+//   accept-admin   --rpc --program --keypair                     step 2: run with the new admin's wallet
+//   poll           --question "..." --options "A,B,C" [--days 7] [--db FILE]
+//   burn           --amount TOKENS --rpc --program --keypair treasury-owner.json [--note "..."] [--db FILE]
+import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createPublicClient, createWalletClient, http, encodeFunctionData, parseAbi } from 'viem';
-import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
-import { NETWORKS, viemChain, leafHash, buildTree, getAddress, isAddress, toBase, toNumber, REWARDS_ABI, TOKEN_ABI, MGRD_DECIMALS } from '../../shared/src/chain/evm.js';
+import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
+import { getMint, getExtensionTypes, ExtensionType, getAccount, getOrCreateAssociatedTokenAccount, transferChecked, burnChecked } from '@solana/spl-token';
+import {
+  pdas, ata, mintInfo, leafHash, buildTree, toHex, toBase, toNumber, TOKEN_2022_PROGRAM_ID, createAtaIdempotentIx, initializeIx, openEpochIx, closeEpochIx,
+  updateConfigIx, setTreasuryIx, proposeAdminIx, acceptAdminIx, decodeConfig, decodeEpoch,
+} from '../../shared/src/chain/program.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const args = process.argv.slice(2);
 const cmd = args[0];
 const opt = (k, d = null) => { const i = args.indexOf(`--${k}`); return i >= 0 ? args[i + 1] : d; };
 const flag = (k) => args.includes(`--${k}`);
-const units = (mgrd) => toBase(mgrd ?? '0');
-const whole = (u) => toNumber(u);
-export const DEAD = '0x000000000000000000000000000000000000dEaD';
-const NONE = '0x0000000000000000000000000000000000000000';
-export const artifact = (name) => JSON.parse(readFileSync(resolve(ROOT, `chain/artifacts/${name}.json`), 'utf8'));
+const need = (k) => { const v = opt(k); if (!v || v.startsWith('--')) throw new Error(`--${k} is required`); return v; };
+const send = (c, signer, ...ixs) => sendAndConfirmTransaction(c, new Transaction().add(...ixs), [signer], { commitment: 'confirmed' });
 
-const network = () => opt('network', process.env.MG_CHAIN_CLUSTER || 'bsc-testnet');
-const address = (value, what) => { if (!value || !isAddress(value)) throw new Error(`${what} is required (a 0x address)`); return getAddress(value); };
-const rewardsAddress = () => address(opt('rewards') ?? process.env.MG_REWARDS_CONTRACT, '--rewards');
-const tokenAddress = () => address(opt('token') ?? process.env.MG_MGRD_TOKEN, '--token');
-
-export function clients({ cluster, rpc, account = null }) {
-  const chain = viemChain(cluster, rpc);
-  const transport = http(rpc || NETWORKS[cluster].rpc, { timeout: 20_000 });
-  const pub = createPublicClient({ chain, transport, pollingInterval: cluster === 'local' ? 100 : 1500 });
-  return { cluster, chain, pub, account, wallet: account ? createWalletClient({ account, chain, transport }) : null };
-}
-/** Check the RPC really is the chosen network before reading or sending anything. */
-async function sameChain(c) {
-  const id = await c.pub.getChainId();
-  if (id !== c.chain.id) throw new Error(`the RPC is for chain ${id}, but --network ${c.cluster} is chain ${c.chain.id}`);
-}
-/** Try the call first (so a refusal says why), send it, and wait until it succeeded. */
-export async function send(c, call) {
-  const { request } = await c.pub.simulateContract({ ...call, account: c.account });
-  const hash = await c.wallet.writeContract(request);
-  const receipt = await c.pub.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success') throw new Error(`transaction ${hash} failed`);
-  return receipt;
-}
-async function create(c, name, params) {
-  const a = artifact(name);
-  const hash = await c.wallet.deployContract({ abi: a.abi, bytecode: a.bytecode, args: params });
-  const receipt = await c.pub.waitForTransactionReceipt({ hash });
-  if (receipt.status !== 'success' || !receipt.contractAddress) throw new Error(`deploying ${name} failed (${hash})`);
-  return getAddress(receipt.contractAddress);
+const TEST_GENESIS = new Set(['EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG', '4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY']); // devnet, testnet
+/** True only when it is certain no real money is involved: a network on this computer, or Solana's dev or test net. */
+export async function isTestNetwork(connection) {
+  const host = new URL(connection.rpcEndpoint).hostname;
+  if (['127.0.0.1', 'localhost'].includes(host)) return true;
+  return TEST_GENESIS.has(await connection.getGenesisHash());
 }
 
-/** Deploy the rewards contract. `owner` controls it from the start (default: the deployer). The token is named
- * later with setToken. */
-export async function deploy(c, { treasury = null, recycleBps = 5000, owner = null, newOwner = null } = {}) {
-  if (owner && newOwner) throw new Error('use --owner or --new-owner, not both');
-  if (owner && !treasury) throw new Error('with --owner, give --treasury too (it would otherwise be the deploying wallet)');
-  const first = owner ? getAddress(owner) : c.account.address;
-  const pay = treasury ? getAddress(treasury) : first;
-  const rewards = await create(c, 'GardenRewards', [pay, recycleBps, first]);
-  if (newOwner) await send(c, { address: rewards, abi: REWARDS_ABI, functionName: 'transferOwnership', args: [getAddress(newOwner)] });
-  return { rewards, treasury: pay, owner: first, deployer: c.account.address };
+const loadKeypair = (file) => Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(file, 'utf8')))); // never printed
+const connect = () => new Connection(opt('rpc', 'http://127.0.0.1:8899'), 'confirmed');
+/** The signing wallet, after making sure a real network was asked for on purpose. */
+async function signer(connection) {
+  if (!(await isTestNetwork(connection)) && !flag('yes-mainnet')) throw new Error('this is not a test network: add --yes-mainnet if you really mean to send it');
+  return loadKeypair(need('keypair'));
 }
 
-/** What a token says about itself, to check before naming it for good. */
-export async function describeToken(c, token) {
-  if (!(await c.pub.getCode({ address: token }))) throw new Error(`there is no contract at ${token} on ${c.cluster}`);
-  const [name, symbol, decimals, supply] = await Promise.all(['name', 'symbol', 'decimals', 'totalSupply'].map((functionName) => c.pub.readContract({ address: token, abi: TOKEN_ABI, functionName })));
-  return { name, symbol, decimals, supply };
+/** What the program will think of a token. Sends nothing. */
+export async function inspectToken(connection, mintAddress) {
+  const mintKey = new PublicKey(mintAddress);
+  const { tokenProgram, decimals } = mintInfo(await connection.getAccountInfo(mintKey));
+  const m = await getMint(connection, mintKey, 'confirmed', tokenProgram);
+  const extensions = tokenProgram.equals(TOKEN_2022_PROGRAM_ID) ? getExtensionTypes(m.tlvData).map((t) => ExtensionType[t] ?? `unknown (${t})`) : [];
+  const problems = [];
+  if (m.mintAuthority) problems.push('more of it can still be minted (mint authority not revoked)');
+  if (m.freezeAuthority) problems.push('accounts can be frozen (it has a freeze authority)');
+  for (const e of extensions) if (!['MetadataPointer', 'TokenMetadata'].includes(e)) problems.push(`it has the Token-2022 extension ${e}, which the program refuses`);
+  return { mint: mintKey, tokenProgram, kind: tokenProgram.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'classic SPL token', decimals, supply: toNumber(m.supply, decimals), extensions, problems };
 }
 
-/** Flap's current tax token (FlapTaxTokenV3) on BSC mainnet. Its public source was read: ordinary transfers are
- * not taxed. Launched tokens are fixed copies (minimal proxies) of this one contract. */
-export const FLAP_TAX_V3 = '0x024f18294970B5c76c0691b87f138A0317156422';
+/** The wallet that can still change the program's code, or null if nobody can. */
+export async function upgradeAuthority(connection, programId) {
+  const info = await connection.getAccountInfo(pdas(programId).programData);
+  if (!info) throw new Error('that program is not deployed on this network (or was not deployed as upgradeable)');
+  return info.data[12] ? new PublicKey(info.data.subarray(13, 45)) : null;
+}
 
-/** Which contract a token is a fixed copy of, and its tax and dividend settings if it is Flap's reviewed tax token. */
-export async function flapDetails(c, token) {
-  const code = (await c.pub.getCode({ address: token }))?.toLowerCase() ?? '';
-  const copy = /^0x363d3d373d3d3d363d73([0-9a-f]{40})5af43d82803e903d91602b57fd5bf3$/.exec(code);
-  const implementation = copy ? getAddress(`0x${copy[1]}`) : null;
-  if (implementation !== FLAP_TAX_V3) return { reviewed: false, implementation };
-  const abi = parseAbi(['function getPoolStateData() view returns (uint8, uint16, uint16, uint256, uint256, uint256)', 'function dividendContract() view returns (address)', 'function dividendToken() view returns (address)']);
-  const read = (address, functionName) => c.pub.readContract({ address, abi, functionName });
-  const [state, buyBps, sellBps, , taxExpiry] = await read(token, 'getPoolStateData');
-  const dividend = await read(token, 'dividendContract');
-  const dividendToken = dividend === NONE ? null : getAddress(await read(dividend, 'dividendToken'));
-  return { reviewed: true, implementation, state, buyBps, sellBps, taxExpiry, dividend, dividendToken };
+/** Give the program its token and treasury. Once only. */
+export async function initProgram({ connection, admin, programId, mint, recycleBps = 5000, treasuryOwner = null }) {
+  const { tokenProgram } = mintInfo(await connection.getAccountInfo(new PublicKey(mint)));
+  const owner = treasuryOwner ? new PublicKey(treasuryOwner) : admin.publicKey;
+  const treasury = ata(owner, mint, tokenProgram);
+  await send(connection, admin,
+    createAtaIdempotentIx(admin.publicKey, owner, mint, tokenProgram),
+    initializeIx({ programId, admin: admin.publicKey, mint, treasury, tokenProgram, recycleBps }));
+  return { treasury, tokenProgram };
+}
+
+/** The program's settings, read from the chain, with the token's decimals. */
+export async function readProgram(connection, programId) {
+  const A = pdas(programId);
+  const info = await connection.getAccountInfo(A.config);
+  if (!info) throw new Error('the program has not been given its token yet (use init)');
+  const cfg = decodeConfig(info.data);
+  const token = mintInfo(await connection.getAccountInfo(cfg.mint));
+  return { A, cfg, ...token };
 }
 
 /**
@@ -135,129 +118,98 @@ export function allocate(rows, { poolUnits, minUnits, capBps = 100, carry = new 
 
 const openDatabase = async () => { const { DatabaseSync } = await import('node:sqlite'); return new DatabaseSync(resolve(ROOT, opt('db', process.env.MG_DB ?? 'server/data/meme-garden.db'))); };
 
-/** Text from a token we did not write, printed without control characters. */
-const plain = (s) => String(s).replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '?').slice(0, 60);
-
-/** The signing account. Errors never include the key. */
-function signer() {
-  const file = opt('key-file');
-  const raw = (file ? readFileSync(file, 'utf8') : process.env.MG_ADMIN_KEY ?? '').trim();
-  if (!raw) throw new Error('give the signing key with --key-file FILE or MG_ADMIN_KEY');
-  try { return privateKeyToAccount(raw.startsWith('0x') ? raw : `0x${raw}`); } catch { throw new Error('that is not a valid private key'); }
-}
-async function signing() {
-  if (network() === 'bsc' && !flag('yes-mainnet')) throw new Error('this would send on BNB Smart Chain MAINNET (real money). Add --yes-mainnet only if you really mean it.');
-  const c = clients({ cluster: network(), rpc: opt('rpc', process.env.MG_CHAIN_RPC), account: signer() });
-  await sameChain(c);
-  return c;
-}
-async function reading() {
-  const c = clients({ cluster: network(), rpc: opt('rpc', process.env.MG_CHAIN_RPC) });
-  await sameChain(c);
-  return c;
-}
-
 async function finalize() {
   const week = opt('week');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(week ?? '')) throw new Error('--week YYYY-MM-DD (the Monday the week started) is required');
-  const rewards = rewardsAddress(), token = tokenAddress();
-  const chainId = viemChain(network()).id;
-  const signed = flag('send') ? await signing() : null; // fail before saving anything if the key or network is wrong
+  if (Date.parse(`${week}T00:00:00Z`) + 7 * 86_400_000 > Date.now() && !flag('force')) throw new Error('that week has not ended yet (use --force for testing)');
+  const c = connect(), programId = need('program');
+  const { cfg, decimals } = await readProgram(c, programId); // the token and its decimals come from the chain
+  const admin = flag('send') ? await signer(c) : null;
   const db = await openDatabase();
   if (db.prepare('SELECT 1 FROM reward_epochs WHERE week = ?').get(week)) throw new Error(`week ${week} is already finalized`);
-  if (Date.parse(`${week}T00:00:00Z`) + 7 * 86_400_000 > Date.now() && !flag('force')) throw new Error('that week has not ended yet (use --force for testing)');
   const rows = db.prepare(`SELECT s.player_id, s.points, w.address FROM season_points s JOIN wallets w ON w.player_id = s.player_id
-    JOIN players p ON p.id = s.player_id WHERE s.week = ? AND s.points > 0 AND p.banned = 0 ORDER BY s.player_id`).all(week)
-    .filter((r) => isAddress(r.address));
+    JOIN players p ON p.id = s.player_id WHERE s.week = ? AND s.points > 0 AND p.banned = 0 ORDER BY s.player_id`).all(week);
   const carry = new Map(db.prepare('SELECT player_id, amount FROM reward_carry').all().map((r) => [r.player_id, BigInt(r.amount)]));
-  const poolUnits = units(opt('pool', '100000'));
-  const { out, carryOut, total } = allocate(rows, { poolUnits, minUnits: units(opt('min', '1')), carry });
+  const poolUnits = toBase(opt('pool', '100000'), decimals);
+  const { out, carryOut, total } = allocate(rows, { poolUnits, minUnits: toBase(opt('min', '1'), decimals), carry });
   if (!out.length) { console.log(`No claimable allocations for ${week} (${rows.length} eligible players, ${total} points).`); return; }
   const epochId = (db.prepare('SELECT MAX(id) AS m FROM reward_epochs').get().m ?? 0) + 1;
-  const tree = buildTree(out.map((r, i) => leafHash({ chainId, rewards, token }, epochId, i, r.address, r.amount)));
+  const leaves = out.map((r, i) => leafHash(programId, cfg.mint, epochId, i, r.address, r.amount));
+  const tree = buildTree(leaves);
   const sum = out.reduce((n, r) => n + r.amount, 0n);
   const deadline = Math.floor(Date.now() / 1000) + Number(opt('deadline-days', '30')) * 86_400;
   db.exec('BEGIN');
   try {
-    db.prepare('INSERT INTO reward_epochs(id, week, root, total, claim_deadline, created_at, status) VALUES(?, ?, ?, ?, ?, ?, ?)').run(epochId, week, tree.root, sum.toString(), deadline, Date.now(), 'finalized');
+    db.prepare('INSERT INTO reward_epochs(id, week, root, total, claim_deadline, created_at, status) VALUES(?, ?, ?, ?, ?, ?, ?)').run(epochId, week, toHex(tree.root), sum.toString(), deadline, Date.now(), 'finalized');
     const ins = db.prepare('INSERT INTO reward_allocations(epoch, idx, player_id, wallet, amount, points, proof) VALUES(?, ?, ?, ?, ?, ?, ?)');
-    out.forEach((r, i) => ins.run(epochId, i, r.player_id, getAddress(r.address), r.amount.toString(), r.points, JSON.stringify(tree.proof(i))));
+    out.forEach((r, i) => ins.run(epochId, i, r.player_id, r.address, r.amount.toString(), r.points, JSON.stringify(tree.proof(i).map(toHex))));
     db.exec('DELETE FROM reward_carry');
-    const c = db.prepare('INSERT INTO reward_carry(player_id, amount) VALUES(?, ?)');
-    for (const [pid, a] of carryOut) c.run(pid, a.toString());
+    const keep = db.prepare('INSERT INTO reward_carry(player_id, amount) VALUES(?, ?)');
+    for (const [pid, a] of carryOut) keep.run(pid, a.toString());
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
-  console.log(`Week ${week} -> epoch ${epochId}: ${out.length} recipients, ${whole(sum)} MGRD of ${whole(poolUnits)} pool, root ${tree.root}`);
-  const call = { address: rewards, abi: REWARDS_ABI, functionName: 'openEpoch', args: [BigInt(epochId), tree.root, sum, BigInt(deadline)] };
-  if (signed) {
-    const r = await send(signed, call);
+  console.log(`Week ${week} -> epoch ${epochId}: ${out.length} recipients, ${toNumber(sum, decimals)} MGRD of ${toNumber(poolUnits, decimals)} pool, root ${toHex(tree.root)}`);
+  if (admin) {
+    const sig = await send(c, admin, openEpochIx({ programId, admin: admin.publicKey, epochId, root: tree.root, total: sum, claimDeadline: deadline }));
     db.prepare("UPDATE reward_epochs SET status = 'open' WHERE id = ?").run(epochId);
-    console.log(`Published on chain: ${r.transactionHash}`);
-  } else console.log(`Not published. To publish with a multisig, send this to ${rewards}:\n${encodeFunctionData(call)}`);
+    console.log(`Published on chain: ${sig}`);
+  } else console.log('Not published. To publish: add --send --keypair, or publish the root with your multisig. (This week is now stored as finalized.)');
 }
 
 async function main() {
-  if (cmd === 'new-wallet') {
-    const out = opt('out');
-    if (!out) throw new Error('--out FILE is required');
-    if (existsSync(out)) throw new Error(`${out} already exists; not overwriting a key`);
-    const key = generatePrivateKey();
-    mkdirSync(dirname(resolve(out)), { recursive: true });
-    writeFileSync(out, `${key}\n`, { mode: 0o600, flag: 'wx' });
-    console.log(`New test wallet ${privateKeyToAccount(key).address}\nIts private key is in ${out}. Keep it private, never commit it, and do not send real funds to it.`);
-  } else if (cmd === 'deploy') {
-    const c = await signing();
-    const file = resolve(ROOT, `chain/deployment-${c.cluster}.json`);
-    if (c.cluster !== 'local' && existsSync(file)) throw new Error(`${file} already exists: this network has a deployment. Move that file away only if you really mean to deploy again.`);
-    const given = (k) => (args.includes(`--${k}`) ? address(opt(k), `--${k}`) : null); // a flag with no address must not be ignored
-    const r = await deploy(c, { treasury: given('treasury'), recycleBps: Number(opt('recycle-bps', '5000')), owner: given('owner'), newOwner: given('new-owner') });
-    const record = { network: c.cluster, chainId: c.chain.id, ...r, token: '', deployedAt: new Date().toISOString() };
-    if (c.cluster !== 'local') writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
-    console.log(record);
-    console.log(`Next, after the token is launched: set-token --network ${c.cluster} --rewards ${r.rewards} --token <address>`);
-    if (opt('new-owner')) console.log(`The new owner must call acceptOwnership() on ${r.rewards}.`);
-  } else if (cmd === 'set-token') {
-    const token = tokenAddress(), rewards = rewardsAddress(), really = flag('yes');
-    const c = really ? await signing() : await reading();
-    const t = await describeToken(c, token);
-    console.log(`Token ${token}\n  name ${plain(t.name)}\n  symbol ${plain(t.symbol)}\n  decimals ${t.decimals}\n  total supply ${whole(t.supply).toLocaleString('en-US')}`);
-    if (t.decimals !== MGRD_DECIMALS) throw new Error(`the contract and the game need ${MGRD_DECIMALS} decimals`);
-    const f = await flapDetails(c, token);
-    if (f.reviewed) {
-      // until the token moves to the exchange, the expiry field still holds a duration in seconds
-      const expiry = f.state === 0 || f.state === 1 ? `lasts ${Math.round(Number(f.taxExpiry) / 86_400)} days after the token moves to the exchange` : `ends ${new Date(Number(f.taxExpiry) * 1000).toISOString().slice(0, 10)}`;
-      const paid = !f.dividendToken ? 'none' : f.dividendToken === token ? "paid in this token (the contract's share joins the reward pool)" : `paid in ${f.dividendToken} (collect the contract's share with: rescue)`;
-      console.log(`  Flap tax token V3 (reviewed): buy tax ${f.buyBps / 100}%, sell tax ${f.sellBps / 100}%, ${expiry}. Ordinary transfers are not taxed.\n  holder dividends: ${paid}`);
-    } else console.log(`  NOT the reviewed Flap tax token (${f.implementation ? `a copy of ${f.implementation}` : 'not a fixed copy'}). A token that takes a fee on ordinary transfers will not work.`);
-    if (!really) return console.log('Nothing sent. Check the address against the launch page, then add --key-file and --yes. This can only be done once.');
-    if (!f.reviewed && c.cluster === 'bsc' && !flag('unreviewed-token')) throw new Error('refusing to set a token whose code was not reviewed. Check it first; --unreviewed-token overrides this.');
-    const r = await send(c, { address: rewards, abi: REWARDS_ABI, functionName: 'setToken', args: [token] });
-    const file = resolve(ROOT, `chain/deployment-${c.cluster}.json`);
-    if (c.cluster !== 'local' && existsSync(file)) writeFileSync(file, `${JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), token }, null, 2)}\n`);
-    console.log(`Token set (${r.transactionHash}). Set on the server:\n  MG_CHAIN_CLUSTER=${c.cluster}\n  MG_REWARDS_CONTRACT=${rewards}\n  MG_MGRD_TOKEN=${token}\n  MG_TREASURY=<the contract's treasury, see status>`);
+  if (cmd === 'check-token') {
+    const r = await inspectToken(connect(), need('mint'));
+    console.log({ token: r.mint.toBase58(), kind: r.kind, decimals: r.decimals, supply: r.supply, extensions: r.extensions });
+    console.log(r.problems.length ? `The program would REFUSE this token:\n  - ${r.problems.join('\n  - ')}` : 'The program accepts this token.');
+    if (r.problems.length) process.exitCode = 1;
+  } else if (cmd === 'init') {
+    const c = connect(), programId = need('program'), mint = need('mint');
+    const r = await inspectToken(c, mint);
+    const authority = await upgradeAuthority(c, programId);
+    const recycleBps = Number(opt('recycle-bps', '5000'));
+    if (!Number.isInteger(recycleBps) || recycleBps < 0 || recycleBps > 10_000) throw new Error('--recycle-bps must be 0 to 10000');
+    console.log({ program: programId, token: r.mint.toBase58(), kind: r.kind, decimals: r.decimals, supply: r.supply, onlyThisWalletCanInit: authority?.toBase58() ?? 'nobody', treasuryOwner: opt('treasury-owner') ?? 'the signing wallet', shareKeptForRewards: `${recycleBps / 100}%` });
+    if (r.problems.length) throw new Error(`the program would refuse this token:\n  - ${r.problems.join('\n  - ')}`);
+    if (!flag('yes')) { console.log('Nothing was sent. Check the token address letter by letter: this works only once. Then run again with --yes.'); return; }
+    const admin = await signer(c);
+    if (!authority?.equals(admin.publicKey)) throw new Error(`this wallet is not the program's upgrade authority (${authority?.toBase58() ?? 'there is none'})`);
+    const done = await initProgram({ connection: c, admin, programId, mint, recycleBps, treasuryOwner: opt('treasury-owner') });
+    console.log(`Done. Treasury account: ${done.treasury.toBase58()}\nSet on the server: MG_CHAIN_CLUSTER=<devnet|mainnet-beta> MG_PROGRAM_ID=${programId} MG_MGRD_MINT=${mint}`);
   } else if (cmd === 'fund') {
-    const amount = units(opt('amount'));
-    if (!(amount > 0n)) throw new Error('--amount is required');
-    const c = await signing(), rewards = rewardsAddress();
-    const token = await c.pub.readContract({ address: rewards, abi: REWARDS_ABI, functionName: 'token' });
-    if (token === NONE) throw new Error('the token is not set yet: tokens sent now could not be used until set-token');
-    const r = await send(c, { address: token, abi: TOKEN_ABI, functionName: 'transfer', args: [rewards, amount] });
-    const pool = await c.pub.readContract({ address: rewards, abi: REWARDS_ABI, functionName: 'poolBalance' });
-    console.log(`Moved ${whole(amount).toLocaleString('en-US')} into the pool (${r.transactionHash}). The pool now holds ${whole(pool).toLocaleString('en-US')}.`);
-  } else if (cmd === 'rescue') {
-    const asset = opt('asset')?.toLowerCase() === 'bnb' ? NONE : address(opt('asset'), '--asset (bnb or a token)');
-    const to = address(opt('to'), '--to');
-    const rewards = rewardsAddress(), c = await signing();
-    console.log((await send(c, { address: rewards, abi: REWARDS_ABI, functionName: 'rescueOther', args: [asset, to] })).transactionHash);
+    const c = connect(), { A, cfg, decimals, tokenProgram } = await readProgram(c, need('program'));
+    const amount = toBase(need('amount'), decimals);
+    console.log(`Send ${toNumber(amount, decimals)} MGRD (token ${cfg.mint.toBase58()}) from your wallet to the rewards vault ${A.vault.toBase58()}.`);
+    if (!flag('yes')) { console.log('Nothing was sent. Run again with --yes.'); return; }
+    const owner = await signer(c);
+    console.log(await transferChecked(c, owner, ata(owner.publicKey, cfg.mint, tokenProgram), cfg.mint, A.vault, owner, amount, decimals, [], { commitment: 'confirmed' }, tokenProgram));
+  } else if (cmd === 'status') {
+    const c = connect(), programId = need('program');
+    const authority = await upgradeAuthority(c, programId);
+    console.log(`Program code can be changed by: ${authority?.toBase58() ?? 'nobody (final)'}`);
+    const { A, cfg, decimals, tokenProgram } = await readProgram(c, programId);
+    const vault = await getAccount(c, A.vault, 'confirmed', tokenProgram);
+    console.log({ admin: cfg.admin.toBase58(), proposedAdmin: cfg.pendingAdmin.equals(PublicKey.default) ? 'none' : cfg.pendingAdmin.toBase58(), token: cfg.mint.toBase58(), decimals, treasury: cfg.treasury.toBase58(), shareKeptForRewards: `${cfg.recycleBps / 100}%`, paused: cfg.paused, vault: toNumber(vault.amount, decimals), reserved: toNumber(cfg.outstanding, decimals) });
+    if (opt('epoch')) console.log(decodeEpoch((await c.getAccountInfo(A.epoch(Number(opt('epoch'))))).data));
   } else if (cmd === 'finalize') await finalize();
   else if (cmd === 'close') {
-    const c = await signing();
-    console.log((await send(c, { address: rewardsAddress(), abi: REWARDS_ABI, functionName: 'closeEpoch', args: [BigInt(opt('epoch'))] })).transactionHash);
+    const c = connect(), admin = await signer(c);
+    console.log(await send(c, admin, closeEpochIx({ programId: need('program'), admin: admin.publicKey, epochId: Number(need('epoch')) })));
   } else if (cmd === 'pause') {
-    if (flag('on') === flag('off')) throw new Error('use --on or --off');
-    const c = await signing(), rewards = rewardsAddress();
-    const bps = await c.pub.readContract({ address: rewards, abi: REWARDS_ABI, functionName: 'recycleBps' });
-    console.log((await send(c, { address: rewards, abi: REWARDS_ABI, functionName: 'updateConfig', args: [bps, flag('on')] })).transactionHash);
+    if (flag('on') === flag('off')) throw new Error('say --on or --off');
+    const c = connect(), admin = await signer(c);
+    console.log(await send(c, admin, updateConfigIx({ programId: need('program'), admin: admin.publicKey, paused: flag('on') })));
+  } else if (cmd === 'set-treasury') {
+    const c = connect(), programId = need('program'), { cfg, tokenProgram } = await readProgram(c, programId);
+    const owner = new PublicKey(need('treasury-owner'));
+    const admin = await signer(c);
+    console.log(await send(c, admin, createAtaIdempotentIx(admin.publicKey, owner, cfg.mint, tokenProgram), setTreasuryIx({ programId, admin: admin.publicKey, treasury: ata(owner, cfg.mint, tokenProgram) })));
+  } else if (cmd === 'new-admin') {
+    const c = connect(), newAdmin = new PublicKey(need('admin')), admin = await signer(c);
+    console.log(await send(c, admin, proposeAdminIx({ programId: need('program'), admin: admin.publicKey, newAdmin })));
+    console.log(`Proposed. Nothing changes until ${newAdmin.toBase58()} runs accept-admin.`);
+  } else if (cmd === 'accept-admin') {
+    const c = connect(), next = await signer(c);
+    console.log(await send(c, next, acceptAdminIx({ programId: need('program'), newAdmin: next.publicKey })));
   } else if (cmd === 'poll') {
     const db = await openDatabase();
     const options = String(opt('options', '')).split(',').map((s) => s.trim()).filter(Boolean);
@@ -266,23 +218,17 @@ async function main() {
     const r = db.prepare('INSERT INTO polls(question, options, created_at, ends_at) VALUES(?, ?, ?, ?)').run(opt('question'), JSON.stringify(options), Date.now(), Date.now() + Number(opt('days', '7')) * 86_400_000);
     console.log(`Vote #${r.lastInsertRowid} started: ${opt('question')} (${options.join(' / ')})`);
   } else if (cmd === 'burn') {
-    const amount = units(opt('amount'));
-    if (!(amount > 0n)) throw new Error('--amount is required');
-    const token = tokenAddress(), c = await signing();
-    const r = await send(c, { address: token, abi: TOKEN_ABI, functionName: 'transfer', args: [DEAD, amount] });
+    const c = connect(), { cfg, decimals, tokenProgram } = await readProgram(c, need('program'));
+    const amount = toBase(need('amount'), decimals);
+    const owner = await signer(c);
+    const from = await getOrCreateAssociatedTokenAccount(c, owner, cfg.mint, owner.publicKey, false, 'confirmed', undefined, tokenProgram);
+    const sig = await burnChecked(c, owner, from.address, cfg.mint, owner, amount, decimals, [], { commitment: 'confirmed' }, tokenProgram);
     const db = await openDatabase();
     db.exec('CREATE TABLE IF NOT EXISTS burns (signature TEXT PRIMARY KEY, amount TEXT NOT NULL, at INTEGER NOT NULL, note TEXT)');
-    db.prepare('INSERT INTO burns(signature, amount, at, note) VALUES(?, ?, ?, ?)').run(r.transactionHash, amount.toString(), Date.now(), opt('note'));
-    const gone = await c.pub.readContract({ address: token, abi: TOKEN_ABI, functionName: 'balanceOf', args: [DEAD] });
-    console.log(`Sent ${whole(amount)} $MGRD to the dead address (tx ${r.transactionHash}). It now holds ${whole(gone).toLocaleString('en-US')}.`);
-  } else if (cmd === 'status') {
-    const c = await reading(), rewards = rewardsAddress();
-    const read = (functionName, params = []) => c.pub.readContract({ address: rewards, abi: REWARDS_ABI, functionName, args: params });
-    const [owner, pendingOwner, token, treasury, recycleBps, paused, pool, reserved, locked] = await Promise.all(['owner', 'pendingOwner', 'token', 'treasury', 'recycleBps', 'paused', 'poolBalance', 'outstanding', 'totalLocked'].map((f) => read(f)));
-    console.log({ network: c.cluster, owner, pendingOwner, token, treasury, recycleBps, paused, pool: whole(pool), reserved: whole(reserved), clubLocked: whole(locked) });
-    if (opt('epoch')) console.log(await read('epochs', [BigInt(opt('epoch'))]));
+    db.prepare('INSERT INTO burns(signature, amount, at, note) VALUES(?, ?, ?, ?)').run(sig, amount.toString(), Date.now(), opt('note'));
+    console.log(`Burned ${toNumber(amount, decimals)} MGRD (transaction ${sig}). Supply now ${(await c.getTokenSupply(cfg.mint)).value.uiAmountString}.`);
   } else if (cmd) throw new Error(`unknown command ${cmd}`);
-  else console.log('Commands: new-wallet, deploy, set-token, fund, rescue, finalize, close, pause, status, poll, burn (see the top of this file)');
+  else console.log('Commands: check-token, init, fund, status, finalize, close, pause, set-treasury, new-admin, accept-admin, poll, burn (see the top of this file)');
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((e) => { console.error(e.shortMessage ?? e.message ?? e); process.exit(1); });
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch((e) => { console.error(e.message ?? e); process.exit(1); });

@@ -4,6 +4,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { STALLS, PLOT, toWorld, walkable } from '@mg/shared/world/village-layout';
 import { CROP } from '@mg/shared/data/crops';
 import { DEFAULT_AVATAR, PETS, WEAR } from '@mg/shared/data/features';
+import { adminCat } from '@mg/shared/data/admin-cats';
 import { PALETTE } from '../fx/world-fx.js';
 import { outfitVisible, furTexture } from './outfit.js';
 import { slideIn } from '../fx/ui-fx.js';
@@ -55,6 +56,7 @@ export class Avatar {
    * Textured clothes are recoloured with a greyscale copy of the texture so the plaid and denim detail stays.
    */
   applyProfile(av) {
+    if (this.fixedLook) return; // an admin cat is a finished model: the wardrobe does not touch it
     const a = { ...DEFAULT_AVATAR, ...(av ?? {}) };
     const key = JSON.stringify(a);
     if (key === this.profileKey) return;
@@ -266,6 +268,35 @@ export class Characters {
     this.avatars.set(slot, e);
     return e;
   }
+  /** Put a player in their admin cat, or back in their own look. The model is only fetched when someone wears it. */
+  wearGift(e, id) {
+    const want = adminCat(id)?.id ?? null;
+    if ((e.wantGift ?? null) === want) return;
+    e.wantGift = want;
+    const swap = (avatar) => {
+      const old = e.avatar;
+      avatar.root.position.copy(old.root.position);
+      avatar.root.rotation.y = old.root.rotation.y;
+      avatar.play(old.base);
+      this.world.scene.add(avatar.root);
+      old.root.parent?.remove(old.root);
+      e.avatar = avatar;
+    };
+    if (!want) {
+      swap(new Avatar(this.gardener, this.assets.mats, { tint: OUTFITS[e.slot % OUTFITS.length] }));
+      e.avatar.applyProfile(this.store.members.get(e.slot)?.avatar);
+      return;
+    }
+    this.giftModels ??= new Map();
+    // loaded as it is: assets.gltf() would swap the model's own materials for the game's shared ones
+    if (!this.giftModels.has(want)) this.giftModels.set(want, this.assets.loader.loadAsync(`/models/admins/${want}.glb`));
+    this.giftModels.get(want).then((gltf) => {
+      if (this.avatars.get(e.slot) !== e || e.wantGift !== want) return; // left, or changed their mind
+      const avatar = new Avatar(gltf, this.assets.mats);
+      avatar.fixedLook = true;
+      swap(avatar);
+    }).catch((err) => { console.error('admin cat', want, err); this.giftModels.delete(want); if (e.wantGift === want) e.wantGift = null; });
+  }
   remove(slot) {
     const e = this.avatars.get(slot);
     if (!e) return;
@@ -371,6 +402,7 @@ export class Characters {
       if (m.club) { const b = document.createElement('span'); b.className = 'hbadge club'; b.textContent = 'Club'; e.label.append(b); }
       e.label.append(document.createTextNode(text));
       e.label.classList.toggle('clubname', !!m.club);
+      this.wearGift(e, m.gift);
       e.avatar.applyProfile(m.avatar);
       e.label.classList.toggle('afk', !!m.afk || !!m.ghost);
       if (slot !== this.store.you?.slot && !e.buf.length) this.push(slot, m.x, m.z, m.ry, m.an);

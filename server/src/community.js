@@ -1,8 +1,8 @@
 // $MGRD community features: holder votes, tips between players, gifts, the weekly Fireworks Pot, naming the
 // village fountain, and the public burn record. Purchases (gift, pot, name) reuse the verified order flow in
 // chain.js; tips are direct wallet-to-wallet transfers that the server checks on chain before announcing.
-import { parseEventLogs } from 'viem';
-import { TOKEN_ABI, toBase, toNumber } from '@mg/shared/chain/evm';
+import { PublicKey } from '@solana/web3.js';
+import { ata, toBase, toNumber } from '@mg/shared/chain/program';
 import { WEAR } from '@mg/shared/data/features';
 import { holderTier, MGRD_POT, MGRD_NAME, MGRD_TIPS, MGRD_PER_GEM } from '@mg/shared/data/mgrd';
 import { weekKey } from '@mg/shared/rules/state';
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS tips (signature TEXT PRIMARY KEY, from_pid TEXT NOT N
 CREATE TABLE IF NOT EXISTS burns (signature TEXT PRIMARY KEY, amount TEXT NOT NULL, at INTEGER NOT NULL, note TEXT);
 `;
 
-export function registerCommunity(app, { db, rooms, need, now, config, conn, checkChain, wallet, holderOf, applyGrant, priceOf, onAnnounce }) {
+export function registerCommunity(app, { db, rooms, need, now, config, conn, token, wallet, holderOf, applyGrant, priceOf, onAnnounce }) {
   const sql = db.raw;
   sql.exec(SCHEMA);
   const q = {
@@ -39,17 +39,17 @@ export function registerCommunity(app, { db, rooms, need, now, config, conn, che
     plaqueLast: sql.prepare('SELECT MAX(until_at) AS u FROM plaques'),
     plaqueAdd: sql.prepare('INSERT INTO plaques(player_id, by_name, text, from_at, until_at) VALUES(?, ?, ?, ?, ?)'),
     tipAdd: sql.prepare('INSERT INTO tips(signature, from_pid, to_pid, amount, at) VALUES(?, ?, ?, ?, ?)'),
-    tipsTo: sql.prepare('SELECT amount FROM tips WHERE to_pid = ?'),
+    tipRows: sql.prepare('SELECT amount FROM tips WHERE to_pid = ?'),
     burns: sql.prepare('SELECT * FROM burns ORDER BY at DESC LIMIT 20'),
     burnRows: sql.prepare('SELECT amount FROM burns'),
     lastBurn: sql.prepare('SELECT MAX(at) AS t FROM burns'),
-    revenue: sql.prepare("SELECT amount FROM mgrd_orders WHERE status = 'fulfilled'"),
+    revenueRows: sql.prepare("SELECT amount FROM mgrd_orders WHERE status = 'fulfilled' AND created_at > ?"),
     name: sql.prepare('SELECT name FROM players WHERE id = ?'),
   };
-  // amounts have 18 decimals, far past what SQLite can add up, so they are stored as text and summed here
   const sum = (rows) => rows.reduce((n, r) => n + BigInt(r.amount), 0n);
-  const potOf = (week) => { const rows = q.potRows.all(week); return { total: sum(rows), givers: new Set(rows.map((r) => r.player_id)).size }; };
-  const potGoal = toBase(config.potGoal ?? 100_000);
+  const potOf = (week) => { const rows = q.potRows.all(week); return { s: sum(rows), n: new Set(rows.map((r) => r.player_id)).size }; };
+  /** The weekly goal in base units; null while the token is not known. */
+  const potGoal = () => (token() ? toBase(config.potGoal ?? 100_000, token().decimals) : null);
   const burnBps = BigInt(config.burnBps ?? 2_000);
 
   /** Purchases handled here (called from the shared quote flow in chain.js). */
@@ -90,10 +90,11 @@ export function registerCommunity(app, { db, rooms, need, now, config, conn, che
         return `Gift sent: ${WEAR[a].name}!`;
       }
       if (kind === 'pot') {
-        const before = potOf(a).total;
+        const before = potOf(a).s;
         q.potAdd.run(a, p.id, String(amount), t);
         const after = before + BigInt(amount);
-        if (before < potGoal && after >= potGoal) onAnnounce?.(null, 'The Fireworks Pot is full! Fireworks over the village all week!');
+        const goal = potGoal();
+        if (goal !== null && before < goal && after >= goal) onAnnounce?.(null, 'The Fireworks Pot is full! Fireworks over the village all week!');
         return 'Thank you! Your $MGRD is in the Fireworks Pot.';
       }
       if (kind === 'name') {
@@ -117,19 +118,20 @@ export function registerCommunity(app, { db, rooms, need, now, config, conn, che
       return { id: pl.id, question: pl.question, options: options.map((o, i) => ({ text: o, weight: tally[i]?.weight ?? 0, voters: tally[i]?.voters ?? 0 })), endsAt: pl.ends_at, open: pl.ends_at > t, myVote: q.myVote.get(pl.id, me ?? '-', p.id)?.option ?? null };
     });
     const pot = potOf(week);
+    const goal = potGoal();
     const plaque = q.plaqueNow.get(t, t);
     // set aside = burn share of all $MGRD shop revenue so far; pending = what has not been burned yet
-    const setAside = (sum(q.revenue.all()) * burnBps) / 10_000n;
+    const setAside = (sum(q.revenueRows.all(0)) * burnBps) / 10_000n;
     const burned = sum(q.burnRows.all());
     const pending = setAside > burned ? setAside - burned : 0n;
-    const tips = q.tipsTo.all(p.id);
+    const received = q.tipRows.all(p.id);
     return {
       polls,
-      pot: { week, total: pot.total.toString(), goal: potGoal.toString(), givers: pot.givers, reached: pot.total >= potGoal, amounts: POT_MGRD, mgrd: POT_MGRD.map((u) => priceOf(u).toString()) },
+      pot: { week, total: String(pot.s), goal: String(goal ?? 0n), givers: pot.n, reached: goal !== null && pot.s >= goal, amounts: POT_MGRD, mgrd: POT_MGRD.map((u) => priceOf(u).toString()) },
       plaque: plaque ? { text: plaque.text, by: plaque.by_name, until: plaque.until_at } : null,
       name: { days: NAME_DAYS, mgrd: priceOf(NAME_MGRD).toString(), nextFree: Math.max(t, q.plaqueLast.get().u ?? 0) },
-      burns: { bps: Number(burnBps), total: burned.toString(), pending: pending.toString(), list: q.burns.all().map((b) => ({ amount: b.amount, at: b.at, signature: b.signature, note: b.note })) },
-      tips: { received: sum(tips).toString(), count: tips.length, amounts: TIP_MGRD },
+      burns: { bps: Number(burnBps), total: String(burned), pending: pending.toString(), list: q.burns.all().map((b) => ({ amount: b.amount, at: b.at, signature: b.signature, note: b.note })) },
+      tips: { received: String(sum(received)), count: received.length, amounts: TIP_MGRD },
     };
   });
 
@@ -137,7 +139,8 @@ export function registerCommunity(app, { db, rooms, need, now, config, conn, che
   app.get('/api/village-board', async () => {
     const t = now();
     const plaque = q.plaqueNow.get(t, t);
-    return { plaque: plaque ? { text: plaque.text, by: plaque.by_name } : null, fireworks: potOf(weekKey(t)).total >= potGoal };
+    const goal = potGoal();
+    return { plaque: plaque ? { text: plaque.text, by: plaque.by_name } : null, fireworks: goal !== null && potOf(weekKey(t)).s >= goal };
   });
 
   app.post('/api/vote', async (req, reply) => {
@@ -167,32 +170,28 @@ export function registerCommunity(app, { db, rooms, need, now, config, conn, che
   });
   app.post('/api/tip/confirm', async (req, reply) => {
     const p = need(req, reply); if (!p) return reply;
-    if (!conn) return reply.code(503).send({ error: 'Chain features are off.' });
-    // lower case, so the same transaction written another way cannot be counted twice
-    const sig = String(req.body?.signature ?? '').toLowerCase();
-    if (!/^0x[0-9a-f]{64}$/.test(sig)) return reply.code(400).send({ error: 'That is not a transaction.' });
+    if (!conn || !token()) return reply.code(503).send({ error: 'Chain features are off.' });
+    const sig = String(req.body?.signature ?? '');
     const e = rooms.byPlayer.get(p.id);
     const toPid = e?.room.slots[Number(req.body?.slot)];
     const from = wallet(p.id), to = toPid && wallet(toPid);
-    if (!from || !to || from === to) return reply.code(400).send({ error: 'Unknown tip.' });
-    try { await checkChain(); } catch (err) { app.log.warn(err); return reply.code(502).send({ error: 'Could not reach BNB Chain. Try again in a moment.' }); }
+    if (!from || !to) return reply.code(400).send({ error: 'Unknown tip.' });
     let tx;
-    for (let i = 0; i < 8 && !tx; i++) {
-      tx = await conn.getTransactionReceipt({ hash: sig }).catch(() => null);
-      const depth = BigInt(config.confirmations ?? 0);
-      if (tx && depth && (await conn.getBlockNumber({ cacheTime: 0 }).catch(() => 0n)) - tx.blockNumber < depth) tx = null;
+    for (let i = 0; i < 6 && !tx; i++) {
+      tx = await conn.getParsedTransaction(sig, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 }).catch(() => null);
       if (!tx) await new Promise((r) => setTimeout(r, 1500));
     }
-    if (!tx || tx.status !== 'success') return reply.code(402).send({ error: 'Tip transaction not found.' });
-    // MGRD must have moved from the tipper's linked wallet (which sent the transaction) to the recipient's
-    const same = (a, b) => a.toLowerCase() === b.toLowerCase();
-    if (!same(tx.from, from)) return reply.code(400).send({ error: 'That transfer was not sent by your linked wallet.' });
-    const gained = parseEventLogs({ abi: TOKEN_ABI, eventName: 'Transfer', logs: tx.logs })
-      .filter((l) => same(l.address, config.token) && same(l.args.from, from) && same(l.args.to, to))
-      .reduce((n, l) => n + l.args.value, 0n);
+    if (!tx || tx.meta?.err) return reply.code(402).send({ error: 'Tip transaction not found.' });
+    // the token balance of the recipient's $MGRD account must have gone up, sent by the tipper's linked wallet
+    const toAta = ata(to, config.mint, token().tokenProgram).toBase58();
+    const keys = tx.transaction.message.accountKeys.map((k) => k.pubkey.toBase58());
+    const signer = tx.transaction.message.accountKeys.find((k) => k.signer)?.pubkey.toBase58();
+    if (signer !== from) return reply.code(400).send({ error: 'That transfer was not sent by your linked wallet.' });
+    const bal = (list) => list?.find((b) => keys[b.accountIndex] === toAta && b.mint === config.mint)?.uiTokenAmount.amount ?? '0';
+    const gained = BigInt(bal(tx.meta.postTokenBalances)) - BigInt(bal(tx.meta.preTokenBalances));
     if (gained <= 0n) return reply.code(400).send({ error: 'No $MGRD reached that gardener.' });
     try { q.tipAdd.run(sig, p.id, toPid, gained.toString(), now()); } catch { return { ok: true, already: true }; }
-    const amt = toNumber(gained);
+    const amt = toNumber(gained, token().decimals);
     const toM = rooms.byPlayer.get(toPid)?.member;
     if (toM?.ws?.readyState === 1) toM.ws.send(JSON.stringify({ t: 'toast', msg: `${p.name} tipped you ${amt.toLocaleString('en-US')} $MGRD!` }));
     onAnnounce?.(p.id, `${p.name} tipped ${q.name.get(toPid)?.name} ${amt.toLocaleString('en-US')} $MGRD!`);
@@ -206,3 +205,5 @@ export function registerCommunity(app, { db, rooms, need, now, config, conn, che
     recordBurn: (signature, amount, note) => sql.prepare('INSERT INTO burns(signature, amount, at, note) VALUES(?, ?, ?, ?)').run(signature, String(amount), now(), note ?? null),
   };
 }
+
+export { PublicKey };

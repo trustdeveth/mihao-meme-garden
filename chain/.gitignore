@@ -3,3 +3,7 @@ cache/
 # never commit keys
 *.key
 keys/
+# Solana build output; it holds the program keypair: back that up somewhere safe, never publish it
+target/
+*keypair*.json
+.anchor/

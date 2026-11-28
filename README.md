@@ -1,6 +1,6 @@
 # Meme Garden (multiplayer, Phase 1)
 
-A free, server-authoritative multiplayer 3D garden game. No wallet is needed to play: the BNB Chain token layer is optional and off by default (see `chain/README.md`). The old single-player demo stays untouched in `../meme-garden-demo`.
+A free, server-authoritative multiplayer 3D garden game. No wallet is needed to play: the Solana token layer is optional and off by default (see `chain/README.md`). The old single-player demo stays untouched in `../meme-garden-demo`.
 
 ## The Mihao look
 
@@ -38,6 +38,16 @@ Cosmetic only: none of them gives coins, gems, reputation, Season Points or MGRD
 Check the meme features in two headless browsers with `npm run build` then `npm run e2e:memes`.
 
 **Mihao names:** crops and homes have Mihao names, and Garden Rebirth is shown as **Promotion** (Rank Stars). Only display text changed: ids such as `carrot`, `treehouse` and `rebirth` are unchanged, so saved gardens keep working.
+
+## Admin cats and "Connect X" (off by default)
+
+Eleven admin cat models live in `tools/models/admins` (`build.mjs` makes the `.glb` files and the small copies in `client/public/models/admins`; `memes.mjs` the pictures; `gifts.py` the gift zips in `output/gifts`). A player who connects an X account on the gift list can wear that cat and download its zip (`server/src/x.js`). Wardrobe, economy and token rules are not affected. In the village the smoking and stain parts are left out.
+
+- **Gift list:** `server/x-gifts.json`, username -> cat number (1-11) or `null`. Changes apply at once.
+- **Local test:** `npm run dev:x`, then open http://127.0.0.1:5190 (not `localhost`) and press **Connect X**. Without keys it uses a pretend sign-in that refuses anything but this computer and is never available in production; pretend links are ignored by the real sign-in.
+- **Real sign-in:** create an app in the X developer portal (OAuth 2.0, callback `http://127.0.0.1:5190/api/x/callback`), then put `MG_X_CLIENT_ID` and `MG_X_CLIENT_SECRET` in `.env.x` (not committed) for local use. Check X's current API pricing.
+- **Live site (not set up):** set `MG_X_CLIENT_ID`, `MG_X_CLIENT_SECRET` and `MG_X_REDIRECT_URI=https://mihaomeme.garden/api/x/callback`, copy `output/gifts` to the server, and send `www.` visitors to the one address first (the sign-in must return to the address the garden was opened on).
+- The game reads only the account id and username and keeps no X token. The first X account to claim a listed username keeps that claim (`x_pins` table), so a later owner of the same name gets nothing.
 
 ## Run it
 
@@ -97,10 +107,11 @@ WASD / arrows to move (walk 3.2 m/s), Shift to run (6.2 m/s; long click-walks ru
 
 ## MGRD token layer (optional, features off)
 
-BNB Chain contracts for weekly MGRD reward claims, MGRD-shop payments and the Garden Club, with wallet linking
-(MetaMask, Trust Wallet, Binance Wallet), Season Points and a Rewards panel in the game (Menu > MGRD Rewards). It
-stays off until the server has `MG_REWARDS_CONTRACT` and `MG_MGRD_TOKEN`. It is built for a Flap tax token. The rewards contract is on BSC mainnet at `0x8ca1E92fEff93Da4337baf2a98faf9FbdCa05d05`, with no token connected and the features still off. Nothing is on testnet
-yet. Contracts, testing, deployment and weekly operations: see [chain/README.md](chain/README.md).
+A Solana program for weekly MGRD reward claims, MGRD-shop payments and the Garden Club, with wallet linking
+(Phantom, Solflare, Backpack), Season Points and a Rewards panel in the game (Menu > MGRD Rewards). The token is
+planned to launch on Pump.fun. The features stay off until the server has `MG_PROGRAM_ID` and `MG_MGRD_MINT` and the
+program has been given that token. Nothing is deployed on Solana yet. Build, tests, deployment and weekly
+operations: see [chain/README.md](chain/README.md).
 
 ## Deploy the client on Vercel (game server elsewhere)
 

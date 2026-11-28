@@ -1,12 +1,13 @@
-// Optional BNB Chain layer (gametokenomics.md sections 8 to 13): wallet linking, weekly MGRD reward claims and the
-// MGRD cosmetics shop. Off unless MG_REWARDS_CONTRACT and MG_MGRD_TOKEN are set; the game works the same without it.
+// Optional Solana layer (gametokenomics.md sections 8 to 13): wallet linking, weekly MGRD reward claims and the
+// MGRD cosmetics shop. Off unless MG_PROGRAM_ID and MG_MGRD_MINT are set; the game works the same without it.
 //
 // Trust rules: the server never signs player transactions and never trusts the browser's word that it paid.
-// Rewards come from finalized weekly allocations (tools/chain/admin.mjs finalize); purchases are granted only after
-// the contract's order receipt is read back and checked against the quote.
-import { randomBytes } from 'node:crypto';
-import { createPublicClient, http, recoverMessageAddress } from 'viem';
-import { NETWORKS, viemChain, getAddress, isAddress, orderIdBytes, toBase, toNumber, REWARDS_ABI, TOKEN_ABI, MGRD_DECIMALS } from '@mg/shared/chain/evm';
+// Rewards come from finalized weekly allocations (tools/chain/finalize-week.mjs); purchases are granted only after
+// the program's on-chain order receipt is read back and checked against the quote.
+import { randomBytes, createPublicKey, verify as edVerify } from 'node:crypto';
+import { Connection, PublicKey } from '@solana/web3.js';
+import bs58 from 'bs58';
+import { pdas, ata, mintInfo, decodeConfig, decodeOrder, decodeEpoch, decodeLock, toHex, toBase, toNumber } from '@mg/shared/chain/program';
 import { LIMITED, HOLDER_TIERS, holderTier, CLUB } from '@mg/shared/data/mgrd';
 import { mgrdPrice, mgrdGrant } from '@mg/shared/rules/mgrd';
 import { publicProfile } from '@mg/shared/rules/public';
@@ -15,64 +16,72 @@ import { WEAR } from '@mg/shared/data/features';
 import { seasonPointsView, SP_CAPS, SP_DAY_CAP, SP_LABEL } from '@mg/shared/rules/season-points';
 import { weekKey } from '@mg/shared/rules/state';
 
+const PUBLIC_RPC = { devnet: 'https://api.devnet.solana.com', 'mainnet-beta': 'https://api.mainnet-beta.solana.com', localnet: 'http://127.0.0.1:8899' };
+const REFRESH_MS = 5 * 60_000; // how often the program's settings are read again
+const RETRY_MS = 30_000;
+
 export function chainConfig(env = process.env) {
-  const cluster = env.MG_CHAIN_CLUSTER || 'bsc-testnet';
-  const net = NETWORKS[cluster];
-  const rewards = env.MG_REWARDS_CONTRACT ?? '';
-  const token = env.MG_MGRD_TOKEN ?? '';
-  const treasury = env.MG_TREASURY ?? '';
-  const enabled = !!(net && isAddress(rewards) && isAddress(token));
-  if (!enabled && (rewards || token)) console.warn('MGRD features stay OFF: check MG_CHAIN_CLUSTER, MG_REWARDS_CONTRACT and MG_MGRD_TOKEN.');
+  const programId = env.MG_PROGRAM_ID ?? '';
+  const mint = env.MG_MGRD_MINT ?? '';
+  const cluster = env.MG_CHAIN_CLUSTER ?? 'devnet';
+  const isKey = (k) => { try { return !!new PublicKey(k); } catch { return false; } };
+  const enabled = !!(programId && mint) && isKey(programId) && isKey(mint) && Object.hasOwn(PUBLIC_RPC, cluster);
+  if (!enabled && (programId || mint)) console.warn('MGRD features stay OFF: check MG_CHAIN_CLUSTER, MG_PROGRAM_ID and MG_MGRD_MINT.');
   return {
-    enabled,
-    cluster,
-    chainId: net?.chainId ?? 0,
-    // the server's RPC may carry a private key in its address, so the browser gets its own (public) one
-    rpc: env.MG_CHAIN_RPC || net?.rpc || '',
-    publicRpc: env.MG_CHAIN_PUBLIC_RPC || net?.rpc || '',
-    confirmations: Number(env.MG_CONFIRMATIONS ?? net?.confirmations ?? 3),
-    rewards, token,
-    treasury: isAddress(treasury) ? treasury : '',
-    // the $MGRD shop opens when the treasury is set (prices are fixed $MGRD amounts in shared/src/data/mgrd.js)
+    enabled, cluster,
+    rpc: env.MG_CHAIN_RPC || PUBLIC_RPC[cluster],
+    programId, mint,
+    // the treasury is read from the program; set MG_TREASURY only to have the server insist on one address
+    treasury: env.MG_TREASURY ?? '',
+    // prices are fixed $MGRD amounts in shared/src/data/mgrd.js
     shopOn: (env.MG_MGRD_SHOP ?? '1') !== '0',
     weeklyPool: Number(env.MG_WEEKLY_POOL ?? 100_000),
     potGoal: Number(env.MG_POT_GOAL ?? 100_000), // $MGRD the village needs in the weekly Fireworks Pot
     burnBps: Number(env.MG_BURN_BPS ?? 2_000), // share of $MGRD shop revenue set aside for the public burns (20%)
-    quoteMs: 5 * 60_000, // paying takes up to two wallet confirmations (allow the amount, then pay)
+    quoteMs: 2 * 60_000,
   };
 }
 
-/** "Sign in with wallet": was this message signed by the wallet (EIP-191 personal_sign)? */
-export async function verifyWalletSignature(address, message, signature) {
+/** Ed25519 signature check for "Sign in with wallet" (Solana wallets sign raw message bytes). */
+export function verifyWalletSignature(address, message, signatureB58) {
   try {
-    if (!/^0x[0-9a-fA-F]{130}$/.test(signature)) return false;
-    return (await recoverMessageAddress({ message, signature })) === getAddress(address);
+    const key = createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x: Buffer.from(new PublicKey(address).toBytes()).toString('base64url') }, format: 'jwk' });
+    return edVerify(null, Buffer.from(message, 'utf8'), key, Buffer.from(bs58.decode(signatureB58)));
   } catch { return false; }
 }
 
 export function registerChain(app, { db, rooms, sessionPlayer, now, config = chainConfig() }) {
   const sql = db.raw;
-  const conn = config.enabled ? createPublicClient({ chain: viemChain(config.cluster, config.rpc), transport: http(config.rpc || undefined, { timeout: 10_000 }) }) : null;
-  const read = (functionName, args, blockNumber) => conn.readContract({ address: config.rewards, abi: REWARDS_ABI, functionName, args, ...(blockNumber ? { blockNumber } : {}) });
-  // an RPC for another network must never be able to "confirm" a payment
-  let rightChain = false;
-  async function checkChain() {
-    if (rightChain) return;
-    const id = await conn.getChainId();
-    if (id !== (config.chainId ?? NETWORKS[config.cluster].chainId)) throw new Error(`the RPC is for chain ${id}, not ${config.cluster}`);
-    // and the contract must be using the same token as the game
-    const set = await read('token', []);
-    if (set.toLowerCase() !== config.token.toLowerCase()) throw new Error(`the rewards contract's token is ${set}, not MG_MGRD_TOKEN (run set-token first?)`);
-    rightChain = true;
-  }
-  /** The newest block that already has enough blocks on top of it to be trusted. */
-  async function safeBlock() {
-    await checkChain();
-    const depth = BigInt(config.confirmations ?? NETWORKS[config.cluster].confirmations);
-    if (!depth) return undefined;
-    return (await conn.getBlockNumber({ cacheTime: 0 })) - depth;
-  }
+  const conn = config.enabled ? new Connection(config.rpc, 'confirmed') : null;
+  const A = config.enabled ? pdas(config.programId) : null;
   const nonces = new Map(); // pid -> {nonce, message, until}
+  const mintKey = config.enabled ? new PublicKey(config.mint) : null;
+
+  // What the chain itself says about the token and the program. Until it has been read and matches the settings, the
+  // token features stay off, so a wrong address can never take a payment or misprice one by a factor of a thousand.
+  let token = null, checkedAt = -Infinity, checking = null, complained = '';
+  async function check() {
+    const [mintAccount, configAccount] = await conn.getMultipleAccountsInfo([mintKey, A.config]);
+    const info = mintInfo(mintAccount);
+    if (!configAccount || !configAccount.owner.equals(A.program)) throw new Error('the program has not been given its token yet (admin.mjs init)');
+    const cfg = decodeConfig(configAccount.data);
+    if (!cfg.mint.equals(mintKey)) throw new Error('the program was set up with a different token than MG_MGRD_MINT');
+    if (config.treasury && cfg.treasury.toBase58() !== config.treasury) throw new Error("the program's treasury is not MG_TREASURY");
+    return { decimals: info.decimals, tokenProgram: info.tokenProgram.toBase58(), treasury: cfg.treasury.toBase58() };
+  }
+  async function ready() {
+    if (!config.enabled) return false;
+    if (now() - checkedAt < (token ? REFRESH_MS : RETRY_MS)) return !!token;
+    checking ??= check().then((t) => { token = t; complained = ''; }, (e) => {
+      // a network hiccup keeps what is already known; a real mismatch switches the features off
+      if (/different token|MG_TREASURY|not a token|no token/.test(e.message)) token = null;
+      if (complained !== e.message) console.warn(`MGRD features: ${(complained = e.message)}`);
+    }).finally(() => { checkedAt = now(); checking = null; });
+    await checking;
+    return !!token;
+  }
+  const on = () => config.enabled && !!token;
+  app.addHook('preHandler', async (req) => { if (config.enabled && /^\/api\/(chain|rewards|shop|mgrd|holder|community|tip|vote|village-board)/.test(req.url)) await ready(); });
   const q = {
     wallet: sql.prepare('SELECT address, linked_at FROM wallets WHERE player_id = ?'),
     walletOwner: sql.prepare('SELECT player_id FROM wallets WHERE address = ?'),
@@ -87,17 +96,13 @@ export function registerChain(app, { db, rooms, sessionPlayer, now, config = cha
     fulfil: sql.prepare("UPDATE mgrd_orders SET status = 'fulfilled', payer = ? WHERE order_id = ? AND status = 'quoted'"),
   };
   let community = null;
-  /** The player's linked BNB Chain wallet, or null (an address from another chain does not count). */
-  const walletOf = (pid) => { const a = q.wallet.get(pid)?.address; return a && isAddress(a) ? a : null; };
   const need = (req, reply) => { const p = sessionPlayer(req); if (!p) reply.code(401).send({ error: 'No session.' }); return p; };
   const live = (pid) => rooms.byPlayer.get(pid)?.member ?? null;
   const stateOf = (pid) => live(pid)?.state ?? db.loadState(pid);
 
   app.get('/api/chain', async () => ({
-    enabled: config.enabled, cluster: config.cluster, chainId: config.chainId ?? NETWORKS[config.cluster]?.chainId ?? 0,
-    rpc: config.publicRpc || NETWORKS[config.cluster]?.rpc || '', explorer: NETWORKS[config.cluster]?.explorer ?? '',
-    rewards: config.rewards ?? '', token: config.token ?? '',
-    treasury: config.treasury, decimals: MGRD_DECIMALS, shop: config.enabled && config.shopOn !== false && !!config.treasury,
+    enabled: on(), cluster: config.cluster, rpc: config.rpc, programId: config.programId, mint: config.mint,
+    treasury: token?.treasury ?? '', decimals: token?.decimals ?? null, tokenProgram: token?.tokenProgram ?? null, shop: shopOpen(),
   }));
 
   // ---- wallet linking: sign a one-time message --------------------------------------------------------
@@ -114,8 +119,8 @@ export function registerChain(app, { db, rooms, sessionPlayer, now, config = cha
     const n = nonces.get(p.id);
     if (!n || n.until < now()) return reply.code(400).send({ error: 'The link request expired. Try again.' });
     let addr;
-    try { addr = getAddress(String(address)); } catch { return reply.code(400).send({ error: 'Not a BNB Chain wallet address.' }); }
-    if (!(await verifyWalletSignature(addr, n.message, String(signature)))) return reply.code(400).send({ error: 'The signature does not match that wallet.' });
+    try { addr = new PublicKey(String(address)).toBase58(); } catch { return reply.code(400).send({ error: 'Not a Solana address.' }); }
+    if (!verifyWalletSignature(addr, n.message, String(signature))) return reply.code(400).send({ error: 'The signature does not match that wallet.' });
     const other = q.walletOwner.get(addr);
     if (other && other.player_id !== p.id) return reply.code(409).send({ error: 'That wallet is linked to another gardener.' });
     nonces.delete(p.id);
@@ -142,17 +147,16 @@ export function registerChain(app, { db, rooms, sessionPlayer, now, config = cha
     const mine = Math.max(stored, sp.week === week ? sp.points : 0);
     const total = Math.max(1, q.weekSum.get(week).s - stored + mine);
     const share = Math.min(mine / total, 0.01); // per-player cap: 1% of a weekly pool
-    const wallet = walletOf(p.id);
+    const wallet = q.wallet.get(p.id)?.address ?? null;
     const allocations = q.allocs.all(p.id).map((a) => ({ epoch: a.epoch, week: a.week, index: a.idx, amount: a.amount, points: a.points, wallet: a.wallet, proof: JSON.parse(a.proof), deadline: a.claim_deadline, status: a.status }));
-    if (conn && allocations.length) {
+    if (on() && allocations.length) {
       try {
-        await checkChain();
-        const done = await Promise.all(allocations.map((a) => read('isClaimed', [BigInt(a.epoch), BigInt(a.index)])));
-        done.forEach((claimed, i) => { allocations[i].claimed = claimed; });
+        const infos = await conn.getMultipleAccountsInfo(allocations.map((a) => A.receipt(a.epoch, a.index)));
+        infos.forEach((info, i) => { allocations[i].claimed = !!info; });
       } catch { /* RPC down: claim status unknown */ }
     }
     return {
-      chain: config.enabled, wallet, week, points: mine, today: sp.today, dayTotal: sp.dayTotal, caps: SP_CAPS, dayCap: SP_DAY_CAP, labels: SP_LABEL,
+      chain: on(), wallet, week, points: mine, today: sp.today, dayTotal: sp.dayTotal, caps: SP_CAPS, dayCap: SP_DAY_CAP, labels: SP_LABEL,
       pool: config.weeklyPool, estimate: Math.floor(config.weeklyPool * share), weekEnds: Date.parse(`${week}T00:00:00Z`) + 7 * 86_400_000,
       allocations,
     };
@@ -160,8 +164,9 @@ export function registerChain(app, { db, rooms, sessionPlayer, now, config = cha
 
   // ---- $MGRD payments: shop items, eggs, decor, special avatars, soil, Grow All, limited drops -----------------
   const SHOP = Object.entries(WEAR).filter(([, w]) => w.mgrd).map(([id, w]) => ({ id, name: w.name, slot: w.slot, color: w.color, finish: w.finish, price: w.mgrd }));
-  const priceOf = (mgrdAmount) => toBase(mgrdAmount); // $MGRD -> base units, exactly
-  const shopOpen = () => config.enabled && config.shopOn !== false && !!config.treasury;
+  // whole $MGRD -> base units, in the token's own decimals (0 while the token is not known: nothing is sold then)
+  const priceOf = (mgrdAmount) => (token ? toBase(Number(Number(mgrdAmount).toFixed(Math.min(token.decimals, 6))), token.decimals) : 0n);
+  const shopOpen = () => on() && config.shopOn !== false;
   const qx = {
     sold: sql.prepare("SELECT COUNT(*) AS n FROM mgrd_orders WHERE item = ? AND status = 'fulfilled'"),
     reserved: sql.prepare("SELECT COUNT(*) AS n FROM mgrd_orders WHERE item = ? AND status = 'quoted' AND expires_at > ?"),
@@ -187,7 +192,7 @@ export function registerChain(app, { db, rooms, sessionPlayer, now, config = cha
   async function quote(req, reply, kind, id) {
     const p = need(req, reply); if (!p) return reply;
     if (!shopOpen()) return reply.code(503).send({ error: 'The $MGRD shop is not open yet.' });
-    if (!walletOf(p.id)) return reply.code(400).send({ error: 'Connect a wallet first.' });
+    if (!q.wallet.get(p.id)) return reply.code(400).send({ error: 'Connect a wallet first.' });
     const t = now();
     const special = community.purchases.price(p, kind, id, req.body);
     const r = special ?? mgrdPrice(stateOf(p.id) ?? {}, kind, id, t, rooms.seed);
@@ -199,7 +204,7 @@ export function registerChain(app, { db, rooms, sessionPlayer, now, config = cha
     const orderId = randomBytes(16).toString('hex');
     const amount = priceOf(r.mgrd);
     q.putOrder.run(orderId, p.id, special ? r.item : `${kind}:${id}`, amount.toString(), r.mgrd, t, t + config.quoteMs, 'quoted');
-    return { orderId, kind, item: id, name: r.name, amount: amount.toString(), mgrd: r.mgrd, expires: t + config.quoteMs, treasury: config.treasury, rewards: config.rewards, token: config.token };
+    return { orderId, kind, item: id, name: r.name, amount: amount.toString(), mgrd: r.mgrd, expires: t + config.quoteMs, treasury: token.treasury, programId: config.programId, mint: config.mint, deadline: Math.floor((t + config.quoteMs) / 1000) };
   }
   app.post('/api/mgrd/quote', async (req, reply) => quote(req, reply, String(req.body?.kind ?? ''), String(req.body?.id ?? '')));
   app.post('/api/shop/quote', async (req, reply) => quote(req, reply, 'wear', String(req.body?.item ?? '')));
@@ -210,23 +215,25 @@ export function registerChain(app, { db, rooms, sessionPlayer, now, config = cha
     if (!o || o.player_id !== p.id) return reply.code(404).send({ error: 'Order not found.' });
     const [kind, id] = o.item.includes(':') ? o.item.split(':') : ['wear', o.item];
     if (o.status === 'fulfilled') return { ok: true, kind, item: id, already: true };
-    if (!conn) return reply.code(503).send({ error: 'Chain features are off.' });
-    const wallet = walletOf(p.id);
+    if (!on()) return reply.code(503).send({ error: 'Chain features are off.' });
+    const wallet = q.wallet.get(p.id)?.address;
     if (!wallet) return reply.code(400).send({ error: 'Connect the wallet you paid with.' });
-    // receipts are stored per paying wallet, so only a payment from the linked wallet counts
-    let receipt;
-    try { receipt = await read('orders', [wallet, orderIdBytes(o.order_id)], await safeBlock()); } catch (err) { app.log.warn(err); return reply.code(502).send({ error: 'Could not reach BNB Chain. Try again in a moment.' }); }
-    const [paid, , paidAt] = receipt;
-    if (!paidAt) return reply.code(402).send({ error: 'Payment not found on chain yet.' });
-    if (paid < BigInt(o.amount)) return reply.code(400).send({ error: 'Paid less than the quote.' });
-    if (Number(paidAt) * 1000 > o.expires_at + 60_000) return reply.code(400).send({ error: 'The quote expired before payment. Contact support.' });
+    let info;
+    try { info = await conn.getAccountInfo(A.order(wallet, Buffer.from(o.order_id, 'hex')), 'confirmed'); } catch { return reply.code(502).send({ error: 'Could not reach Solana. Try again in a moment.' }); }
+    if (!info) return reply.code(402).send({ error: 'Payment not found on chain yet.' });
+    if (!info.owner.equals(A.program)) return reply.code(400).send({ error: 'Not a payment receipt.' });
+    const r = decodeOrder(info.data);
+    if (toHex(r.orderId) !== o.order_id) return reply.code(400).send({ error: 'Receipt does not match the order.' });
+    if (r.payer.toBase58() !== wallet) return reply.code(400).send({ error: 'Paid from a wallet that is not linked to you.' });
+    if (r.amount < BigInt(o.amount)) return reply.code(400).send({ error: 'Paid less than the quote.' });
+    if (Number(r.paidAt) * 1000 > o.expires_at + 60_000) return reply.code(400).send({ error: 'The quote expired before payment. Contact support.' });
     // things that depend on the garden right now must still be possible (the payment stays valid; retry later)
     if (['soil', 'egg', 'growall'].includes(kind)) {
       const chk = mgrdPrice(stateOf(p.id) ?? {}, kind, id, now(), rooms.seed);
       if (!chk.ok) return reply.code(409).send({ error: `Paid, but not possible right now: ${chk.msg} Your payment is kept; try again when it is possible.`, paid: true });
     }
     // grant exactly once: the row update succeeds for only one request
-    if (q.fulfil.run(wallet, o.order_id).changes !== 1) return { ok: true, kind, item: id, already: true };
+    if (q.fulfil.run(r.payer.toBase58(), o.order_id).changes !== 1) return { ok: true, kind, item: id, already: true };
     const edition = kind === 'limited' ? qx.sold.get(o.item).n : 0; // this order is already counted
     const msg = ['gift', 'pot', 'name'].includes(kind) ? community.purchases.grant(p, o.item, o.amount) : applyGrant(p.id, (s) => mgrdGrant(s, kind, id, { now: now(), seed: rooms.seed }, edition));
     db.audit(p.id, now(), 'mgrd_purchase', { order: o.order_id, kind, item: id, amount: o.amount, edition });
@@ -254,18 +261,18 @@ export function registerChain(app, { db, rooms, sessionPlayer, now, config = cha
   // ---- holder tier and Garden Club ---------------------------------------------------------------------
   async function holderOf(wallet) {
     const out = { balance: 0, locked: 0, unlockAt: 0 };
-    if (!conn || !wallet) return out;
+    if (!on() || !wallet) return out;
     const [bal, lock] = await Promise.all([
-      conn.readContract({ address: config.token, abi: TOKEN_ABI, functionName: 'balanceOf', args: [wallet] }).then(toNumber).catch(() => 0),
-      read('locks', [wallet]).catch(() => null),
+      conn.getTokenAccountBalance(ata(wallet, config.mint, token.tokenProgram)).then((b) => toNumber(b.value.amount, token.decimals)).catch(() => 0),
+      conn.getAccountInfo(A.lock(wallet)).then((i) => (i ? decodeLock(i.data) : null)).catch(() => null),
     ]);
     out.balance = bal;
-    if (lock && lock[0] > 0n) { out.locked = toNumber(lock[0]); out.unlockAt = Number(lock[2]) * 1000; }
+    if (lock) { out.locked = toNumber(lock.amount, token.decimals); out.unlockAt = Number(lock.unlockAt) * 1000; }
     return out;
   }
   app.get('/api/holder', async (req, reply) => {
     const p = need(req, reply); if (!p) return reply;
-    const wallet = walletOf(p.id);
+    const wallet = q.wallet.get(p.id)?.address ?? null;
     const h = await holderOf(wallet);
     const tier = holderTier(h.balance + h.locked);
     const clubActive = h.locked >= CLUB.minLock && h.unlockAt > now();
@@ -286,10 +293,7 @@ export function registerChain(app, { db, rooms, sessionPlayer, now, config = cha
     const rs = pid ? [rooms.byPlayer.get(pid)?.room].filter(Boolean) : [...rooms.rooms.values()];
     for (const r of rs) r.broadcast({ t: 'toast', msg, kind: 'gold' });
   }
-  community = registerCommunity(app, { db, rooms, need, now, config, conn, checkChain, wallet: walletOf, holderOf, applyGrant, priceOf, onAnnounce: announce });
+  community = registerCommunity(app, { db, rooms, need, now, config, conn, token: () => token, wallet: (pid) => q.wallet.get(pid)?.address ?? null, holderOf, applyGrant, priceOf, onAnnounce: announce });
 
-  return {
-    community, config,
-    readEpoch: async (id) => { if (!conn) return null; const [root, total, claimed, claimDeadline, closed] = await read('epochs', [BigInt(id)]); return total ? { root, total, claimed, claimDeadline, closed } : null; },
-  };
+  return { community, config, ready, readEpoch: async (id) => { const i = conn && (await conn.getAccountInfo(A.epoch(id))); return i ? decodeEpoch(i.data) : null; } };
 }

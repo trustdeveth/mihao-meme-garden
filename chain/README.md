@@ -1,155 +1,109 @@
-# MGRD on BNB Chain: contract, integration and operations
+# MGRD on Solana: program, integration and operations
 
-Optional token layer for Meme Garden, built to `gametokenomics.md` sections 8 to 13 (written for Solana; the rules
-are the same here). The game runs the same without it. **`GardenRewards` is deployed on BSC mainnet** (2026-11-25) at `0x8ca1E92fEff93Da4337baf2a98faf9FbdCa05d05`, with
-**no token connected yet**. Owner and treasury: `0x240ACF16b5401E2EDb543B798aCA6BC3041b948d`. That wallet's private
-key was pasted into a chat, so treat it as exposed: move ownership and the treasury to a safe wallet before adding
-value. The details are in `deployment-bsc.json`. Nothing is on BNB testnet. There has been **no independent security review**.
+Optional token layer for Meme Garden, built to `gametokenomics.md` sections 8 to 13. The game runs the same
+without it. **Nothing is deployed on Solana yet** (not on devnet or mainnet). Everything below has been tested only
+on a private local network. There has been **no independent security review**.
+
+The token is not part of this repository. The plan is to launch it on **Pump.fun**.
 
 ## What is on chain
 
-**The token is not part of this repository.** It is launched on Flap. Flap's documentation gives its tokens a
-1,000,000,000 maximum supply and 18 decimals. **The team plans to launch a Flap tax token** (see below).
+`programs/garden_rewards` (Anchor 0.31):
 
-One Solidity contract in `contracts/` (Solidity 0.8.28, OpenZeppelin 5.6.1) is deployed: **`GardenRewards`**. It is
-**not upgradeable**. It is deployed *before* the token exists; the owner names the token with `setToken` **once**, and
-it can never be changed. (`contracts/test/` holds two stand-in tokens used only by the tests.)
-
-| Function | Who | What |
+| Instruction | Who | What |
 |---|---|---|
-| `setToken(token)` | owner, once | Names the 18-decimal game token. Until then nothing that moves tokens works. A wrong address cannot be corrected: deploy again |
-| `openEpoch(id, root, total, deadline)` | owner | Publishes a week's Merkle root; the pool must hold enough for every open week |
-| `claim(id, index, wallet, amount, proof)` | anyone (usually the player) | Pays the fixed allocation to the wallet in the proof, once. Someone else may pay the network fee |
-| `closeEpoch(id)` | owner, after the deadline | Stops claims; unclaimed tokens stay in the pool for later weeks |
-| `payOrder(orderId, amount, deadline)` | player | Pays a quoted shop order; `recycleBps` (default 50%) stays in the pool, the rest goes to the treasury. Once per wallet and order id; refused after the quote's deadline |
-| `clubLock(amount, days)` / `clubUnlock()` | player | Garden Club: lock for 1 to 365 days, then take back exactly that amount. A lock where less than the full amount arrives (a transfer tax) is refused. Unlocking works while paused |
-| `withdrawUnreserved(to, amount)` | owner | Takes pool tokens no open week needs. Cannot touch reserved rewards or club locks |
-| `rescueOther(asset, to)` | owner | Sends out BNB (zero address) or a token that is **not** the game token, such as holder dividends paid to the contract |
-| `updateConfig(recycleBps, paused)`, `setTreasury` | owner | Pause stops claims, payments and new locks |
-| `transferOwnership` then `acceptOwnership` | owner, then new owner | Two-step handover. `renounceOwnership` is disabled |
+| `initialize(recycle_bps)` | the program's **upgrade authority**, once | Names the token and treasury; creates the rewards vault. That wallet becomes the admin |
+| `open_epoch(id, root, total, deadline)` | admin | Publishes a week's Merkle root; the vault must hold enough for every open week |
+| `claim(id, index, amount, proof)` | player | Pays the fixed allocation; a receipt per leaf blocks a second claim |
+| `close_epoch(id)` | admin, after the deadline | Stops claims; unclaimed tokens stay in the vault |
+| `pay_order(order_id, amount, deadline)` | player | Pays a quoted shop order before the quote runs out; `recycle_bps` (default 50%) to the vault, the rest to the treasury. Receipts are per payer and order id |
+| `club_lock(amount, days)` / `club_unlock()` | player | Garden Club lock; the same amount comes back after the date, even while paused |
+| `withdraw_unreserved`, `update_config` (recycle share, pause), `set_treasury`, `propose_admin` / `accept_admin` | admin | Operations; funds reserved for open weeks cannot be withdrawn |
 
-Weekly rewards and club locks share the contract's token balance. `totalLocked` keeps the club part apart: the pool
-is `balance - totalLocked`.
+**Deploy first, name the token later.** The program is deployed before the token exists. `initialize` is refused for
+everyone except the upgrade authority, so nobody can set the program up with their own token in between.
 
-A reward leaf is `keccak256(keccak256(abi.encode("MGRD-REWARD-V1" hash, chain id, rewards contract, token, week,
-index, wallet, amount)))`, so a proof cannot be reused on another chain, contract, week or wallet. The same hashing
-is in `shared/src/chain/evm.js`; the tests check that the two agree.
+**Which tokens it accepts.** Classic SPL tokens and Token-2022 tokens, any number of decimals. It refuses a token
+whose mint authority is not revoked, that has a freeze authority, or that has any Token-2022 extension other than
+the metadata pointer and token metadata (so: no transfer fee, transfer hook, permanent delegate and so on). On
+2026-11-28, five newly created Pump.fun tokens on mainnet were read and all would be accepted (Token-2022,
+6 decimals, only those two extensions). Always run `check-token` on the real token.
 
-## Flap tax token
+**The upgrade authority matters.** Whoever holds it can replace the program's code, and so change every rule above.
+Keep it in a safe wallet or a multisig (`solana program set-upgrade-authority`). Making the program final removes
+the risk and also the ability to fix bugs. `initialize` needs it, so change or remove it only after `init`.
 
-Based on the public source of Flap's current tax token, `FlapTaxTokenV3` at
-`0x024f18294970B5c76c0691b87f138A0317156422` on BSC mainnet (read from Sourcify; launched tokens are fixed copies of
-it), and of the dividend contract that live tokens pointed to. Other token versions were not reviewed.
+Rewards leaves are `sha256(0x00, "MGRD-REWARD-V1", program, mint, week, index, wallet, amount)`. The same hashing
+is in `shared/src/chain/program.js` and checked against the Rust code by a shared test vector.
 
-- **Tax is charged only on transfers to or from a trading pool.** Claims, shop payments, Garden Club locks and
-  unlocks, tips, funding, withdrawals and burns arrive in full. Before the token moves to the exchange, Flap charges
-  the tax as an extra fee on trades on its price curve.
-- The token has **no function to change the tax rates**. The tax ends after the duration chosen at launch.
-- **Holder dividends (if switched on): the rewards contract is a holder**, so it earns them on the pool and on club
-  locks. Paid in the game token, they join the pool (which the owner can withdraw from when unreserved). Paid in BNB,
-  WBNB, USDT or another token, they sit at the contract until the owner runs
-  `chain:admin -- rescue --asset bnb|0x<token> --to 0x<wallet>`. Anyone can trigger the payout to the contract
-  (`withdrawDividendsFor`), and Flap's bot does so automatically. Players do not get dividends on locked tokens.
-- Flap controls the dividend contract (it can redirect or recover dividends). That does not move the game token held
-  by the rewards contract.
-
-**Rehearse before `set-token`** (needs Foundry; costs nothing, sends nothing to the real chain):
+## Build and test (Windows + WSL Ubuntu)
 
 ```bash
-npm run chain:rehearse -- --token 0x<token>
+npm run chain:build          # Rust unit tests + chain/target/deploy/garden_rewards.so
+npm run chain:build-test     # TEST build: a Garden Club lock "day" is one second. Never deploy it
+npm run chain:test-program   # the program on a local network, with both kinds of token
+npm run chain:e2e            # the real game server and admin tool on a local network
 ```
 
-It runs on a private copy of BSC mainnet with your token: every game transfer, a simulated move to the exchange, and,
-for dividends paid in BNB, collecting the contract's share. It borrows tokens from Flap's portal; if that holds too
-few, add `--holder 0x<wallet>`. It was run successfully on 2026-11-25 with a live third-party tax token (2% buy and
-sell, BNB dividends). Dividends paid in other tokens were not simulated.
+The package scripts hold this computer's path to `chain/scripts/build.sh`; change it if the folder moves. WSL needs
+Rust and the Solana (Agave) tools (`chain/scripts/wsl-setup.sh`). Both tests start and stop their own local network
+on port 8899.
 
-## What the player's wallet does
+`chain/target/deploy/garden_rewards-keypair.json` fixes the program's address. It is git-ignored: **back it up
+privately, never publish it**, and do not delete `chain/target` without a backup. The first build creates it and
+writes the address into `lib.rs`.
 
-- **Connect:** MetaMask, Trust Wallet, Binance Wallet or another EVM wallet. Linking signs a message; it costs nothing.
-  The game asks the wallet to switch to (or add) the right BNB network. Smart-contract wallets cannot link yet.
-- **Pay or lock:** two confirmations, first to allow **exactly** that amount (never unlimited), then the action.
-- **Fees:** every transaction needs a little BNB.
-- **Ticker:** the game's screens say $MGRD. If the launched token has another ticker, change the wording.
+## Launch order (nothing here runs by itself)
 
-## Build and test
+Costs checked on 2026-11-28: the program's deposit on mainnet is about 2.46 SOL (`solana rent` for the built file).
+Keep about 3 SOL in the deploy wallet; a later upgrade needs about the same again for a short time.
 
-Needs [Foundry](https://getfoundry.sh) (`forge`, `anvil`) on the machine that builds or tests the contracts. The game
-server does not need it: the compiled contracts are saved in `artifacts/`.
-
-```bash
-npm run chain:build    # after changing a contract: compiles, then updates artifacts/ and shared/src/chain/abi.js
-npm run chain:e2e      # starts a local chain: deploy, link, claim, shop, tips, club, burn, and what must be refused
-```
-
-## Deploy, launch, connect
-
-```bash
-# 1. deploy the contract (before the token). --treasury receives the treasury half of shop payments;
-#    --owner makes a safe wallet the owner from the first moment (the deploying key then controls nothing; check the
-#    address with care). --new-owner instead proposes an owner later, which must call acceptOwnership()
-npm run chain:admin -- deploy --network <net> --key-file <file> --treasury 0x<wallet> [--owner 0x<wallet>]
-# 2. launch the tax token on Flap, then rehearse with its address
-npm run chain:rehearse -- --token 0x<token>
-# 3. look at the token's details first (sends nothing), then name it. THIS WORKS ONCE.
-npm run chain:admin -- set-token --network <net> --rewards 0x<contract> --token 0x<token>
-npm run chain:admin -- set-token --network <net> --rewards 0x<contract> --token 0x<token> --key-file <owner file> --yes
-# 4. fund the reward pool with the tokens from the developer's launch buy (from the wallet that holds them)
-npm run chain:admin -- fund --network <net> --rewards 0x<contract> --amount <tokens> --key-file <file>
-```
-
-`<net>` is `bsc-testnet` or `bsc`. On `bsc` every sending command also needs `--yes-mainnet`. Once ownership has moved
-to a multisig, send `setToken` from the multisig instead.
-
-**Keys:** `--key-file` is a file holding one private key. Create it yourself, keep it in `chain/keys/` (ignored by
-git), and never paste a key into a chat, a command line or a repository. Treat any key that has been pasted anywhere
-as exposed. The deploying key only needs BNB for fees.
-
-For a testnet trial, `npm run chain:admin -- new-wallet --out chain/keys/testnet.key` makes a throwaway wallet (get
-test BNB from the BNB Chain faucet); after `set-token`, run `npm run dev:testnet`.
-
-## Server settings
+1. Get an independent security review.
+2. Use a **new deploy wallet** that has never been shared. Try everything on devnet first.
+3. Deploy (in WSL, from the project folder):
+   `solana program deploy chain/target/deploy/garden_rewards.so --program-id chain/target/deploy/garden_rewards-keypair.json --keypair <deploy-wallet.json> --url <network>`
+4. Launch the token on Pump.fun, paired with SOL. In a standard launch the supply is 1,000,000,000. Leave special
+   modes (such as Mayhem mode and holder rewards) off: they change how the token or its creator fee behaves.
+5. `npm run chain:admin -- check-token --mint <MINT> --rpc <URL>` (sends nothing).
+6. `npm run chain:admin -- init --mint <MINT> --program <ID> --rpc <URL> --keypair <deploy-wallet.json>` shows what it
+   would do. Check the address letter by letter, then add `--yes` (and `--yes-mainnet` on mainnet). **Once only.**
+7. `npm run chain:admin -- fund --amount <TOKENS> --program <ID> --rpc <URL> --keypair <wallet-holding-the-tokens.json> --yes`
+8. `npm run chain:admin -- status --program <ID> --rpc <URL>`
+9. Start the server with:
 
 | Variable | Meaning |
 |---|---|
-| `MG_REWARDS_CONTRACT`, `MG_MGRD_TOKEN` | Turn the chain features on |
-| `MG_CHAIN_CLUSTER` | `bsc-testnet` (default) or `bsc` |
-| `MG_TREASURY` | Wallet that receives the treasury share; the MGRD shop stays closed without it. Use the same one the contract has |
-| `MG_CHAIN_RPC` | The server's RPC (may contain a private API key; it is not sent to browsers) |
-| `MG_CHAIN_PUBLIC_RPC` | The RPC given to browsers (default: the public one) |
-| `MG_CONFIRMATIONS` | Blocks on top of a payment or tip before it counts (default 3) |
-| `MG_MGRD_SHOP` | `0` keeps the MGRD shop closed |
-| `MG_WEEKLY_POOL`, `MG_POT_GOAL`, `MG_BURN_BPS` | Weekly pool shown in estimates, Fireworks Pot goal, burn share |
+| `MG_PROGRAM_ID`, `MG_MGRD_MINT` | Turn the token features on |
+| `MG_CHAIN_CLUSTER` | `devnet`, `mainnet-beta` or `localnet` |
+| `MG_CHAIN_RPC` | RPC address (default: the public one; use a paid one for a real launch) |
+| `MG_TREASURY` | Optional: the treasury **token account** the server must see in the program |
+| `MG_WEEKLY_POOL` | Weekly pool shown in estimates (default 100,000) |
+| `MG_BURN_BPS` | Share of shop payments set aside to burn (default 2000 = 20%) |
+| `MG_MGRD_SHOP` | `0` keeps the shop closed |
 
-The server checks that its RPC is really on the chosen network before it accepts any payment or tip.
+The server reads the token's decimals, token program and treasury from the chain. It keeps the token features off
+until the program has been given **the same token** as `MG_MGRD_MINT`.
 
-## Before using it with real value
-
-1. **Independent security review** of the contract (plan section 12).
-2. A hardware wallet or multisig as owner. The owner chooses each week's reward list and can withdraw pool tokens
-   that no open week has reserved. It can never take club locks.
-3. After `set-token`, check on BscScan that the token address matches the launch page.
-4. Verify the contract source on BscScan (`forge verify-contract`, with your own BscScan API key).
-5. **Tokenomics:** Flap sells the token to the public on its price curve, so the percentage allocation in
-   `gametokenomics.md` (40% community, 15% team, ...) cannot be done by handing out a minted supply. Rewards are
-   funded with the developer's launch buy. A token that takes a fee on ordinary transfers, or does not have
-   18 decimals, will not work. `set-token` refuses an unrecognised token on mainnet unless `--unreviewed-token` is given.
+Sending anything to a network other than a local one, devnet or testnet also needs `--yes-mainnet`.
 
 ## Weekly operations
 
-- Players earn **Season Points** in the game (Daily Challenge 40, orders/contract 25, festival co-op 20, Sky Island
-  discoveries 15; at most 100 a day). The server stores them per week.
-- After the week ends: `npm run chain:admin -- finalize --week <Monday> --pool 100000 --network <net> --rewards <addr> --token <addr>`
-  computes allocations (linked wallets only, max 1% of the pool each, small amounts carried to next week), stores
-  the proofs and prints the root. Review it, then publish: add `--send --key-file <file>` when you first run it, or
-  send the printed transaction data from the multisig.
-- Players claim from **Menu > MGRD Rewards**. After the deadline: `chain:admin -- close --epoch N`.
-- `chain:admin -- status --rewards <addr>` shows the pool, reserved amount, club locks and pause state;
-  `pause --on` stops claims, payments and new locks. `poll` starts a holder vote; `burn` sends treasury tokens to
-  the dead address and shows it in the game (the token's total supply number does not change).
+- Players earn **Season Points** (Daily Challenge 40, orders and contract 25, festival co-op 20, Sky Island 15; at
+  most 100 a day). Only players with a linked wallet **when the week is finalized** are included.
+- After the week ends: `admin.mjs finalize --week <Monday> --pool 100000 --program <ID> --rpc <URL>` computes the
+  allocations (at most 1% of the pool each; amounts under 1 carry over), stores the proofs and prints the root.
+  It stores the week as finalized even without `--send`, so add `--send --keypair` when you mean to publish.
+- After the claim deadline: `admin.mjs close --epoch N`.
+- **Burns:** the game shows 20% of shop payments as waiting to be burned. `admin.mjs burn --amount <TOKENS>` burns
+  from the signing wallet and records the transaction. **Use it only for shop-sales burns**: every recorded burn is
+  subtracted from the shop amount still waiting. Other burns (for example from creator fees) would need their own
+  label first.
+- `admin.mjs pause --on` stops claims, payments and new locks.
 
-## Moving from the earlier Solana version
+## The earlier BNB Chain contract
 
-The Solana program, its devnet record and its tools were removed; they remain in git history. Wallets linked in a
-database before the move are Solana addresses: the game now treats them as not linked, and players link a BNB
-wallet instead.
+Before the move back to Solana, a rewards contract was deployed on **BSC mainnet** at
+`0x8ca1E92fEff93Da4337baf2a98faf9FbdCa05d05` (record: `deployment-bsc.json`). It is not used by this code, which no
+longer contains the BNB version (it is in git history, commit `c6e4edb`). It cannot be removed from the chain.
+**Its owner wallet's private key was shared in a chat: treat it as exposed. Never connect a token to that contract
+or send value to it.** A later bridge to BNB Chain is a separate project and needs its own security review.

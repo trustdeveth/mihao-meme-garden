@@ -13,6 +13,7 @@ import { openDb } from './db.js';
 import { RoomManager } from './rooms.js';
 import { registerChain, chainConfig } from './chain.js';
 import { registerShare } from './share.js';
+import { registerX, xConfig } from './x.js';
 import { sha256, token, recoveryCode, normalizeRecovery, guestName, makeTicket, readTicket, Bucket, cleanChat } from './security.js';
 
 const SESSION_COOKIE = 'mg_session';
@@ -231,5 +232,8 @@ export async function createServer(opts = {}) {
   });
 
   const chain = registerChain(app, { db, rooms, sessionPlayer, now, config: opts.chain ?? chainConfig() });
-  return { app, rooms, db, seed, chain };
+  await chain.ready(); // if the network cannot be read now, it is tried again later; the game runs either way
+  // "Connect X" for the admin gifts (see x.js); off unless configured
+  const x = registerX(app, { db, rooms, sessionPlayer, now, config: opts.x ?? xConfig(), giftsFile: opts.xGiftsFile ?? process.env.MG_X_GIFTS_FILE, giftsDir: opts.xGiftsDir, fetchImpl: opts.xFetch });
+  return { app, rooms, db, seed, chain, x };
 }

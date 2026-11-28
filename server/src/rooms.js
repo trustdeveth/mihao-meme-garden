@@ -57,7 +57,7 @@ class Member {
     this.pubEffects = JSON.stringify(state.effects.map(publicEffect));
   }
   publicInfo(likes) {
-    return { slot: this.slot, name: this.name, x: this.pos.x, z: this.pos.z, ry: this.pos.ry, an: this.pos.an, afk: this.afk, ghost: !this.ws, likes, ...publicProfile(this.state) };
+    return { slot: this.slot, name: this.name, x: this.pos.x, z: this.pos.z, ry: this.pos.ry, an: this.pos.an, afk: this.afk, ghost: !this.ws, likes, ...publicProfile(this.state), gift: this.gift ?? null };
   }
 }
 
@@ -398,6 +398,7 @@ export class RoomManager {
     const room = friendRoom && friendRoom.freeSlot() >= 0 ? friendRoom : this.pickRoom();
     const slot = room.freeSlot();
     const member = new Member(pid, name, state, slot, now);
+    member.gift = this.giftOf?.(pid) ?? null; // an admin cat, if this player wears one
     member.ws = ws;
     room.slots[slot] = pid;
     room.members.set(pid, member);
